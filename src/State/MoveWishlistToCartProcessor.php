@@ -4,12 +4,15 @@ namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use Webkul\BagistoApi\Dto\CartData;
 use Webkul\BagistoApi\Dto\MoveWishlistToCartInput;
+use Webkul\BagistoApi\Dto\MoveWishlistToCartOutput;
 use Webkul\BagistoApi\Exception\AuthorizationException;
 use Webkul\BagistoApi\Exception\InvalidInputException;
 use Webkul\BagistoApi\Exception\ResourceNotFoundException;
 use Webkul\BagistoApi\Models\Wishlist;
 use Webkul\Checkout\Facades\Cart;
+use Webkul\Checkout\Models\Cart as CartModel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 
@@ -45,8 +48,9 @@ class MoveWishlistToCartProcessor implements ProcessorInterface
 
     /**
      * Handle move to cart operation for wishlist items
+     * Returns cart data similar to handleAddProduct in CartTokenProcessor
      */
-    private function handleMoveToCart(MoveWishlistToCartInput $input): \Webkul\BagistoApi\Models\MoveWishlistToCart
+    private function handleMoveToCart(MoveWishlistToCartInput $input): array
     {
         $user = Auth::guard('sanctum')->user();
 
@@ -58,7 +62,9 @@ class MoveWishlistToCartProcessor implements ProcessorInterface
             throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.invalid-quantity'));
         }
 
-        $wishlistItem = Wishlist::where('id', $input->wishlistItemId)
+        // Eager load product relationship - required for Cart::moveToCart() to work
+        $wishlistItem = Wishlist::with('product')
+            ->where('id', $input->wishlistItemId)
             ->where('customer_id', $user->id)
             ->first();
 
@@ -67,8 +73,26 @@ class MoveWishlistToCartProcessor implements ProcessorInterface
         }
 
         try {
+            // Get the current cart first (if exists)
+            $cart = Cart::getCart();
+
+            // If no cart exists, create one
+            if (! $cart) {
+                $channel = core()->getCurrentChannel();
+                $cartRepository = app('Webkul\Checkout\Repositories\CartRepository');
+                $cart = $cartRepository->create([
+                    'customer_id' => $user->id,
+                    'channel_id'  => $channel->id,
+                    'is_active'   => 1,
+                ]);
+            }
+
+            // Set the cart on the facade before moving
+            Cart::setCart($cart);
+
             Event::dispatch('customer.wishlist.move-to-cart.before', $input->wishlistItemId);
 
+            // Move the wishlist item to cart
             $result = Cart::moveToCart($wishlistItem, $input->quantity);
 
             Event::dispatch('customer.wishlist.move-to-cart.after', $input->wishlistItemId);
@@ -77,10 +101,22 @@ class MoveWishlistToCartProcessor implements ProcessorInterface
                 throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.move-to-cart-missing-options'));
             }
 
-            return new \Webkul\BagistoApi\Models\MoveWishlistToCart(
-                __('bagistoapi::app.graphql.wishlist.moved-to-cart-success'),
-                $input->wishlistItemId
-            );
+            // Collect totals to update cart calculations
+            Cart::collectTotals();
+
+            // Get the updated cart
+            $updatedCart = Cart::getCart();
+
+            if (! $updatedCart) {
+                throw new ResourceNotFoundException(__('bagistoapi::app.graphql.cart.cart-not-found'));
+            }
+
+            // Build the response like handleAddProduct does
+            $responseData = CartData::fromModel($updatedCart);
+            $responseData->success = true;
+            $responseData->message = __('bagistoapi::app.graphql.wishlist.moved-to-cart-success');
+
+            return (array) $responseData;
         } catch (\Exception $exception) {
             throw new InvalidInputException($exception->getMessage());
         }

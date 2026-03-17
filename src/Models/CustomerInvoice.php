@@ -88,26 +88,6 @@ class CustomerInvoice extends Model
     protected $appends = ['downloadUrl'];
 
     /**
-     * Download URL property for GraphQL
-     * Exposed explicitly for GraphQL serialization
-     */
-    #[ApiProperty(writable: false, readable: true, description: 'Direct download link for invoice PDF via API')]
-    public ?string $downloadUrl = null;
-
-    /**
-     * Invoice items relationship for GraphQL
-     * Exposed explicitly as an ApiProperty collection
-     */
-    #[ApiProperty(writable: false, readable: true)]
-    public ?array $items = null;
- 
-    /**
-     * API Platform identifier
-     */
-    #[ApiProperty(identifier: true, writable: false)]
-    public ?int $id = null;
-
-    /**
      * Download URL for the invoice PDF
      * Using Eloquent accessor pattern so it's automatically included in toArray()
      * Routes through BagistoApi endpoint with bearer token authentication
@@ -145,20 +125,13 @@ class CustomerInvoice extends Model
     }
 
     /**
-     * Ensure downloadUrl and items are included in array serialization for GraphQL
+     * Ensure downloadUrl is included in array serialization for GraphQL
      */
     public function toArray(): array
     {
         $array = parent::toArray();
         $array['downloadUrl'] = $this->downloadUrl;
-        
-        // If items relationship is loaded, include it as array
-        if ($this->relationLoaded('items')) {
-            $array['items'] = $this->getRelation('items')->toArray();
-        } elseif (isset($this->items)) {
-            $array['items'] = $this->items;
-        }
-        
+
         return $array;
     }
 }

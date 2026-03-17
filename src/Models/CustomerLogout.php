@@ -22,6 +22,10 @@ use Webkul\BagistoApi\State\LogoutProcessor;
             normalizationContext: [
                 'groups' => ['mutation'],
             ],
+            denormalizationContext: [
+                'allow_extra_attributes' => true,
+                'groups' => ['mutation'],
+            ],
         ),
     ]
 )]

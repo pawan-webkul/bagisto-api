@@ -2,10 +2,22 @@
 
 namespace Webkul\BagistoApi\Dto;
 
+use Symfony\Component\Serializer\Annotation\Groups;
+
 /**
  * LogoutInput DTO
  *
- * Empty DTO for logout mutation.
- * The token is extracted from the Authorization header, so no input is needed.
+ * Contains input fields for logout mutation.
+ * The token is extracted from the Authorization header, but deviceToken can be passed to remove it from the device tokens table.
  */
-class LogoutInput {}
+class LogoutInput
+{
+    #[Groups(['mutation'])]
+    public ?string $deviceToken = null;
+
+    public function __construct(
+        ?string $deviceToken = null,
+    ) {
+        $this->deviceToken = $deviceToken;
+    }
+}

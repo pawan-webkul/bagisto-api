@@ -187,6 +187,10 @@ class CartData
     #[ApiProperty(description: 'Order ID after order creation')]
     public ?string $orderId = null;
 
+    #[Groups(['query', 'mutation'])]
+    #[ApiProperty(description: 'Redirect URL for buy now checkout')]
+    public ?string $redirectUri = null;
+
     public function getSelectedShippingRate(): ?string
     {
         return $this->selectedShippingRate;

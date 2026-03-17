@@ -35,6 +35,12 @@ class CustomerProcessor implements ProcessorInterface
                     throw $e;
                 }
 
+                // Normalize gender if provided
+                $normalizedGender = $this->validator->validateGender($data->gender ?? null);
+                if ($normalizedGender !== null) {
+                    $data->gender = $normalizedGender;
+                }
+
                 if (! empty($data->password) && ! empty($data->confirm_password)) {
                     if ($data->password !== $data->confirm_password) {
                         throw new InvalidInputException(__('bagistoapi::app.graphql.customer.password-mismatch'));
@@ -63,6 +69,15 @@ class CustomerProcessor implements ProcessorInterface
                 Event::dispatch('customer.registration.before');
 
                 $customer = $this->customerRepository->create($customerData);
+
+                // Dispatch event to save device_token - PushNotification package will handle this
+                $deviceToken = $data->device_token ?? $data->deviceToken ?? null;
+                if ($deviceToken) {
+                    Event::dispatch('bagistoapi.customer.device-token.save', [
+                        'customerId'  => $customer->id,
+                        'deviceToken' => $deviceToken,
+                    ]);
+                }
 
                 Event::dispatch('customer.create.after', $customer);
 
@@ -99,6 +114,11 @@ class CustomerProcessor implements ProcessorInterface
                 }
 
                 $this->validator->validateForUpdate($data);
+
+                // Normalize gender if provided
+                if (isset($data->gender) && $data->gender !== null) {
+                    $data->gender = $this->validator->validateGender($data->gender);
+                }
 
                 $data->save();
 

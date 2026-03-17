@@ -6,7 +6,9 @@ use ApiPlatform\GraphQl\Resolver\Factory\ResolverFactoryInterface;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Property\Factory\PropertyMetadataFactoryInterface;
 use GraphQL\Type\Definition\ResolveInfo;
+use Webkul\BagistoApi\Dto\CartData;
 use Webkul\BagistoApi\Models\Product;
+use Webkul\BagistoApi\Models\ReadCart;
 use Webkul\BagistoApi\State\ProductRelationProvider;
 
 /**
@@ -42,10 +44,19 @@ class ProductRelationResolverFactory implements ResolverFactoryInterface
 
         $capturedOperation = $operation;
 
-        return function (?array $source, array $args, $context, ResolveInfo $info) use ($innerResolver, $capturedOperation) {
+        return function (?array $source, array $args, $context, ResolveInfo $info) use ($innerResolver, $capturedOperation, $resourceClass, $rootClass) {
 
             // Handle CartData items field - fetch items fresh from database to avoid denormalization issues
-            if ($info->fieldName === 'items' && is_array($source) && isset($source['id'])) {
+            $isCartContext = in_array($resourceClass, [ReadCart::class, CartData::class], true)
+                || in_array($rootClass, [ReadCart::class, CartData::class], true);
+
+            if (
+                $isCartContext
+                && $info->fieldName === 'items'
+                && is_array($source)
+                && isset($source['id'])
+                && is_numeric($source['id'])
+            ) {
                 $cartId = $source['id'];
 
                 // Fetch items fresh from database
@@ -88,13 +99,13 @@ class ProductRelationResolverFactory implements ResolverFactoryInterface
                 ];
             }
 
-            $relationFields = ['upSells', 'crossSells', 'relatedProducts', 'superAttributes', 'reviews'];
+            $relationFields = ['upSells', 'crossSells', 'relatedProducts', 'superAttributes', 'reviews', 'bookingProducts'];
 
             if (
                 in_array($info->fieldName, $relationFields)
                 && is_array($source)
                 && array_key_exists($info->fieldName, $source)
-                && $source[$info->fieldName] === []
+                && ($source[$info->fieldName] === [] || $source[$info->fieldName] === null)
             ) {
 
                 $product = null;
@@ -179,6 +190,47 @@ class ProductRelationResolverFactory implements ResolverFactoryInterface
 
                                 $node = $mapKeys($raw);
 
+                                $isSequentialArray = static function ($value): bool {
+                                    return is_array($value) && array_values($value) === $value;
+                                };
+
+                                $listToConnection = function (array $list) use ($isSequentialArray, &$listToConnection): array {
+                                    $edges = [];
+                                    foreach ($list as $i => $item) {
+                                        $node = is_array($item) ? $item : (array) $item;
+
+                                        if (! array_key_exists('_id', $node) && array_key_exists('id', $node) && is_numeric($node['id'])) {
+                                            $node['_id'] = (int) $node['id'];
+                                        }
+
+                                        // Convert nested collection-like fields to Relay connections when present as lists
+                                        if (array_key_exists('translations', $node) && $isSequentialArray($node['translations'])) {
+                                            $node['translations'] = $listToConnection($node['translations']);
+                                        }
+
+                                        $edges[] = [
+                                            'node'   => $node,
+                                            'cursor' => base64_encode((string) $i),
+                                        ];
+                                    }
+
+                                    return [
+                                        'totalCount' => count($list),
+                                        'edges'      => $edges,
+                                        'pageInfo'   => [
+                                            'startCursor'     => base64_encode('0'),
+                                            'endCursor'       => base64_encode((string) max(0, count($list) - 1)),
+                                            'hasNextPage'     => false,
+                                            'hasPreviousPage' => false,
+                                        ],
+                                    ];
+                                };
+
+                                // Normalize BookingProduct eventTickets list into a Relay connection shape
+                                if (isset($node['eventTickets']) && $isSequentialArray($node['eventTickets'])) {
+                                    $node['eventTickets'] = $listToConnection($node['eventTickets']);
+                                }
+
                                 // Determine the resource type based on the model class
                                 $modelClass = class_basename($item);
 
@@ -186,6 +238,9 @@ class ProductRelationResolverFactory implements ResolverFactoryInterface
                                     $node['id'] = '/api/shop/products/'.$item->id;
                                     $node['sku'] = $item->sku;
                                     $node['baseImageUrl'] = env('API_URL').$item->getBaseImageUrlAttribute();
+
+                                } elseif ($modelClass === 'BookingProduct') {
+                                    $node['id'] = '/api/shop/booking-products/'.$item->id;
 
                                 } elseif ($modelClass === 'Attribute') {
                                     $node['id'] = '/api/shop/attributes/'.$item->id;

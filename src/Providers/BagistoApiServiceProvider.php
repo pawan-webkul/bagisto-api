@@ -5,6 +5,7 @@ namespace Webkul\BagistoApi\Providers;
 use ApiPlatform\GraphQl\Resolver\Factory\ResolverFactoryInterface;
 use ApiPlatform\GraphQl\Resolver\QueryCollectionResolverInterface;
 use ApiPlatform\GraphQl\Resolver\QueryItemResolverInterface;
+use ApiPlatform\GraphQl\Type\Definition\IterableType;
 use ApiPlatform\Laravel\Eloquent\State\PersistProcessor;
 use ApiPlatform\Metadata\IdentifiersExtractorInterface;
 use ApiPlatform\Metadata\IriConverterInterface;
@@ -99,6 +100,9 @@ class BagistoApiServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(IterableType::class);
+        $this->app->tag(IterableType::class, 'api_platform.graphql.type');
+
         $this->app->singleton(StorefrontKeyService::class, function ($app) {
             return new StorefrontKeyService;
         });
@@ -242,6 +246,10 @@ class BagistoApiServiceProvider extends ServiceProvider
             return new ReorderProcessor(
                 $app->make(PersistProcessor::class)
             );
+        });
+
+        $this->app->singleton(LogoutProcessor::class, function ($app) {
+            return new LogoutProcessor();
         });
 
         $this->app->tag(CheckoutAddressProvider::class, ProviderInterface::class);
@@ -581,6 +589,7 @@ class BagistoApiServiceProvider extends ServiceProvider
     {
         $this->commands([
             \Webkul\BagistoApi\Console\Commands\InstallApiPlatformCommand::class,
+            \Webkul\BagistoApi\Console\Commands\ClearApiPlatformCacheCommand::class,
             GenerateStorefrontKey::class,
             \Webkul\BagistoApi\Console\Commands\ApiKeyManagementCommand::class,
             \Webkul\BagistoApi\Console\Commands\ApiKeyMaintenanceCommand::class,

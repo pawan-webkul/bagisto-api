@@ -16,10 +16,22 @@ use Webkul\BagistoApi\Resolver\BaseQueryItemResolver;
 #[ApiResource(
     routePrefix: '/api/shop',
     shortName: 'ThemeCustomization',
-    uriTemplate: '/theme-customizations/{id}',
     operations: [
-        new Get(uriTemplate: '/theme-customizations/{id}'),
-        new GetCollection(uriTemplate: '/theme-customizations'),
+        new Get(
+            uriTemplate: '/theme-customizations/{id}',
+            normalizationContext: [
+                'skip_null_values' => false,
+            ],
+        ),
+        new GetCollection(
+            uriTemplate: '/theme-customizations',
+            paginationEnabled: true,
+            paginationItemsPerPage: 15,
+            paginationMaximumItemsPerPage: 100,
+            normalizationContext: [
+                'skip_null_values' => false,
+            ],
+        ),
     ],
     graphQlOperations: [
         new Query(resolver: BaseQueryItemResolver::class),
@@ -29,27 +41,28 @@ use Webkul\BagistoApi\Resolver\BaseQueryItemResolver;
 #[QueryParameter(key: 'type', filter: EqualsFilter::class)]
 class ThemeCustomization extends \Webkul\Theme\Models\ThemeCustomization
 {
-    protected $appends = ['code', 'theme_code'];
-
-    #[ApiProperty(readable: true, writable: false)]
-    public function getCodeAttribute(): ?string
+    /**
+     * Get unique theme customization identifier for API
+     */
+    #[ApiProperty(identifier: true, writable: false)]
+    public function getId(): int
     {
-        return $this->attributes['theme_code'] ?? null;
+        return $this->id;
     }
 
-    #[ApiProperty(readable: true, writable: false)]
-    public function getTheme_codeAttribute(): ?string
-    {
-        return $this->attributes['theme_code'] ?? null;
-    }
-
-    #[ApiProperty(readable: true, writable: false, readableLink: true)]
+    /**
+     * Get translation for the current locale
+     */
+    #[ApiProperty(readable: true, writable: false, readableLink: true, description: 'Current locale translation')]
     public function getTranslation(?string $locale = null, ?bool $withFallback = null): ?Model
     {
         return $this->translation;
     }
 
-    #[ApiProperty(readable: true, writable: false, readableLink: true)]
+    /**
+     * Get all translations
+     */
+    #[ApiProperty(readable: true, writable: false, readableLink: true, description: 'All translations')]
     public function getTranslations()
     {
         return $this->translations;

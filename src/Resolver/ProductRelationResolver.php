@@ -5,7 +5,7 @@ namespace Webkul\BagistoApi\Resolver;
 use Webkul\BagistoApi\Models\Product;
 
 /**
- * Custom resolver for Product nested relations (upSells, crossSells, relatedProducts)
+ * Custom resolver for Product nested relations (upSells, crossSells, relatedProducts, bookingProducts)
  * Ensures the relation methods are called instead of querying all products
  */
 class ProductRelationResolver

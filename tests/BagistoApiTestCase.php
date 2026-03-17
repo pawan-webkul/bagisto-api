@@ -5,11 +5,14 @@ namespace Webkul\BagistoApi\Tests;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Testing\TestResponse;
+use Webkul\Attribute\Models\Attribute;
+use Webkul\Attribute\Models\AttributeOption;
 use Webkul\BagistoApi\Tests\BagistoApiTest;
 use Webkul\Core\Models\Channel;
 use Webkul\Customer\Models\Customer;
 use Webkul\Customer\Models\CustomerGroup;
 use Webkul\Product\Models\Product;
+use Webkul\Product\Models\ProductAttributeValue;
 
 /**
  * Base test case for all BagistoApi tests.
@@ -22,7 +25,7 @@ abstract class BagistoApiTestCase extends BagistoApiTest
     use DatabaseTransactions;
 
     /** Default storefront API key for tests */
-    protected string $storefrontKey = 'pk_test_1234567890abcdef';
+    protected string $storefrontKey = 'pk_storefront_WaZh0x0FlbKF1suYmDD37YTfkRKm6BJ1';
 
     /** Disable API logging middleware for tests */
     protected $withoutMiddleware = [
@@ -117,6 +120,140 @@ abstract class BagistoApiTestCase extends BagistoApiTest
             'customer' => $customer,
             'token'    => $customer->token,
         ];
+    }
+
+    protected function getAttributeIdByCode(string $code): int
+    {
+        $attributeId = Attribute::query()->where('code', $code)->value('id');
+
+        if (! $attributeId) {
+            $this->markTestSkipped(sprintf('Required attribute "%s" not found. Run Bagisto seeders for attributes.', $code));
+        }
+
+        return (int) $attributeId;
+    }
+
+    protected function upsertProductAttributeValue(
+        int $productId,
+        string $attributeCode,
+        mixed $value,
+        ?string $locale = 'en',
+        ?string $channel = 'default'
+    ): void {
+        $attribute = Attribute::query()->where('code', $attributeCode)->first();
+
+        if (! $attribute) {
+            $this->markTestSkipped(sprintf('Required attribute "%s" not found. Run Bagisto seeders for attributes.', $attributeCode));
+        }
+
+        $type = (string) ($attribute->type ?? 'text');
+        $field = ProductAttributeValue::$attributeTypeFields[$type] ?? 'text_value';
+
+        $payload = [
+            'product_id'   => $productId,
+            'attribute_id' => (int) $attribute->id,
+            'locale'       => $locale,
+            'channel'      => $channel,
+            'text_value'   => null,
+            'boolean_value'=> null,
+            'integer_value'=> null,
+            'float_value'  => null,
+            'datetime_value'=> null,
+            'date_value'   => null,
+            'json_value'   => null,
+        ];
+
+        $normalized = $value;
+
+        if ($field === 'boolean_value') {
+            $normalized = (bool) $value;
+        } elseif ($field === 'integer_value') {
+            $normalized = (int) $value;
+        } elseif ($field === 'float_value') {
+            $normalized = (float) $value;
+        } elseif ($field === 'json_value') {
+            $normalized = is_string($value) ? $value : json_encode($value);
+        } else {
+            $normalized = is_string($value) ? $value : (string) $value;
+        }
+
+        $payload[$field] = $normalized;
+
+        ProductAttributeValue::query()->updateOrCreate(
+            [
+                'product_id'   => $productId,
+                'attribute_id' => (int) $attribute->id,
+                'locale'       => $locale,
+                'channel'      => $channel,
+            ],
+            $payload
+        );
+    }
+
+    protected function ensureProductIsSaleable(Product $product, ?float $price = 10.0): void
+    {
+        $this->upsertProductAttributeValue($product->id, 'name', 'Test '.$product->sku, 'en', 'default');
+        $this->upsertProductAttributeValue($product->id, 'url_key', strtolower($product->sku), 'en', 'default');
+        $this->upsertProductAttributeValue($product->id, 'status', 1, null, 'default');
+
+        if ($price !== null) {
+            $this->upsertProductAttributeValue($product->id, 'price', $price, null, 'default');
+        }
+    }
+
+    protected function ensureInventory(Product $product, int $qty = 50): void
+    {
+        $inventorySourceId = (int) (DB::table('inventory_sources')->value('id') ?? 0);
+
+        if (! $inventorySourceId) {
+            $this->markTestSkipped('No inventory_sources found. Run Bagisto seeders for inventory sources.');
+        }
+
+        DB::table('product_inventories')->updateOrInsert(
+            [
+                'product_id'          => $product->id,
+                'inventory_source_id' => $inventorySourceId,
+                'vendor_id'           => 0,
+            ],
+            [
+                'qty' => $qty,
+            ]
+        );
+    }
+
+    protected function createBaseProduct(string $type, array $overrides = []): Product
+    {
+        $this->seedRequiredData();
+
+        $attributeFamilyId = (int) (DB::table('attribute_families')->value('id') ?? 1);
+
+        $product = Product::factory()->create([
+            'type'                => $type,
+            'attribute_family_id' => $attributeFamilyId,
+            ...$overrides,
+        ]);
+
+        $this->ensureProductIsSaleable($product, 10.0);
+
+        return $product;
+    }
+
+    protected function createAttributeOption(int $attributeId, string $label, string $locale = 'en'): int
+    {
+        /** @var AttributeOption $option */
+        $option = AttributeOption::query()->create([
+            'attribute_id' => $attributeId,
+            'admin_name'   => $label,
+            'sort_order'   => 1,
+        ]);
+
+        DB::table('attribute_option_translations')->insert([
+            'attribute_option_id' => $option->id,
+            'locale'              => $locale,
+            'label'               => $label,
+        ]);
+
+        return (int) $option->id;
     }
 
     /**

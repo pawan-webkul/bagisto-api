@@ -2,7 +2,6 @@
 
 namespace Webkul\BagistoApi\Models;
 
-use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use Illuminate\Database\Eloquent\Model;
 
@@ -45,30 +44,6 @@ class CustomerInvoiceItem extends Model
         'created_at'            => 'datetime',
         'updated_at'            => 'datetime',
     ];
-
-    /** @var array */
-    protected $appends = ['qty'];
-
-    /**
-     * Explicit properties for GraphQL serialization
-     */
-    #[ApiProperty(identifier: true, writable: false)]
-    public ?int $id = null;
-
-    #[ApiProperty(writable: false, readable: true)]
-    public ?string $sku = null;
-
-    #[ApiProperty(writable: false, readable: true)]
-    public ?string $name = null;
-
-    #[ApiProperty(writable: false, readable: true)]
-    public ?int $qty = null;
-
-    #[ApiProperty(writable: false, readable: true)]
-    public ?float $price = null;
-
-    #[ApiProperty(writable: false, readable: true)]
-    public ?float $total = null;
 
     /**
      * toArray override to ensure all properties are included

@@ -14,55 +14,75 @@ class CustomerProfileOutput
 {
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('id')]
+    #[Groups(['mutation'])]
     public ?string $id = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[SerializedName('_id')]
+    #[Groups(['mutation'])]
+    public ?string $_id = null;
+
+    #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('firstName')]
+    #[Groups(['mutation'])]
     public ?string $firstName = null;
 
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('lastName')]
+    #[Groups(['mutation'])]
     public ?string $lastName = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $email = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $phone = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $gender = null;
 
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('dateOfBirth')]
+    #[Groups(['mutation'])]
     public ?string $dateOfBirth = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $status = null;
 
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('subscribedToNewsLetter')]
+    #[Groups(['mutation'])]
     public ?bool $subscribedToNewsLetter = null;
 
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('isVerified')]
+    #[Groups(['mutation'])]
     public ?string $isVerified = null;
 
     #[ApiProperty(readable: true, writable: false)]
     #[SerializedName('isSuspended')]
+    #[Groups(['mutation'])]
     public ?string $isSuspended = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $image = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?bool $success = null;
 
     #[ApiProperty(readable: true, writable: false)]
+    #[Groups(['mutation'])]
     public ?string $message = null;
 
     public function __construct(
         ?string $id = null,
+        ?string $_id = null,
         ?string $firstName = null,
         ?string $lastName = null,
         ?string $email = null,
@@ -78,6 +98,7 @@ class CustomerProfileOutput
         ?string $message = null,
     ) {
         $this->id = $id;
+        $this->_id = $_id;
         $this->firstName = $firstName;
         $this->lastName = $lastName;
         $this->email = $email;

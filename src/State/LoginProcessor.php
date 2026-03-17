@@ -4,6 +4,7 @@ namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Webkul\BagistoApi\Dto\LoginInput;
@@ -51,11 +52,13 @@ class LoginProcessor implements ProcessorInterface
                     $customer->save();
                 }
 
-                // Update device_token if provided (optional, not required)
+                // Dispatch event to save device_token - PushNotification package will handle this
                 $deviceToken = $data->deviceToken ?? null;
                 if ($deviceToken) {
-                    $customer->forceFill(['device_token' => $deviceToken]);
-                    $customer->save();
+                    Event::dispatch('bagistoapi.customer.device-token.save', [
+                        'customerId'  => $customer->id,
+                        'deviceToken' => $deviceToken,
+                    ]);
                 }
 
                 $token = $customer->createToken('customer-login')->plainTextToken;

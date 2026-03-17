@@ -50,6 +50,7 @@ class CustomerProfileHelper
 
         return new CustomerProfileOutput(
             id: (string) $customer->id,
+            _id: (string) $customer->id,
             firstName: $customer->first_name,
             lastName: $customer->last_name,
             email: $customer->email,

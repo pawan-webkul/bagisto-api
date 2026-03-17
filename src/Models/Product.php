@@ -1050,7 +1050,7 @@ class Product extends BaseProduct
      */
     public function booking_products(): HasMany
     {
-        return $this->hasMany(BookingProduct::class);
+         return $this->hasMany(BookingProduct::class, 'product_id');
     }
 
     /**

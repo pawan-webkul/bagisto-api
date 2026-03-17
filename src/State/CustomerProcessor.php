@@ -70,12 +70,13 @@ class CustomerProcessor implements ProcessorInterface
 
                 $customer = $this->customerRepository->create($customerData);
 
-                // Update device_token directly after creation
-                // (forceFill bypasses fillable restriction on parent model)
+                // Dispatch event to save device_token - PushNotification package will handle this
                 $deviceToken = $data->device_token ?? $data->deviceToken ?? null;
                 if ($deviceToken) {
-                    $customer->forceFill(['device_token' => $deviceToken]);
-                    $customer->save();
+                    Event::dispatch('bagistoapi.customer.device-token.save', [
+                        'customerId'  => $customer->id,
+                        'deviceToken' => $deviceToken,
+                    ]);
                 }
 
                 Event::dispatch('customer.create.after', $customer);

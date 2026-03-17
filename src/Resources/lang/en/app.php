@@ -21,6 +21,10 @@ return [
             'item-ids-required'                 => 'Item IDs array is required',
             'coupon-code-required'              => 'Coupon code is required',
             'address-data-required'             => 'Country, state, and postcode are required',
+            'grouped-qty-required'             => 'Grouped product requires selected quantities. Pass groupedQty as JSON string, e.g. {"101":2,"102":1}.',
+            'grouped-qty-must-include-all'     => 'Grouped product requires quantities for all associated products. Missing IDs: :ids.',
+            'grouped-qty-invalid-associated'   => 'Grouped product quantities contain invalid associated product IDs: :ids.',
+            'grouped-qty-invalid-quantity'     => 'Invalid quantity provided for associated product ID :id. Quantity must be a non-negative integer.',
 
             'add-product-failed'                => 'Failed to add product to cart',
             'update-item-failed'                => 'Failed to update cart item',

@@ -8,6 +8,11 @@ use Webkul\BagistoApi\Models\Category;
 
 /**
  * Provider for fetching category tree structure for REST API
+ * 
+ * This provider handles the /api/shop/categories/tree endpoint and supports:
+ * - parentId query parameter to filter by parent category
+ * - depth query parameter to control how deep the tree goes (default: 4)
+ * - Returns hierarchical category structure with translations
  */
 class RestCategoryTreeProvider implements ProviderInterface
 {
@@ -25,13 +30,15 @@ class RestCategoryTreeProvider implements ProviderInterface
         $depth = (int) (request('depth') ?? self::MAX_DEPTH);
 
         if ($parentId) {
-            $parent = Category::find($parentId);
+            $parent = Category::with(['translations', 'translation'])
+                ->find($parentId);
 
             if (! $parent) {
                 return [];
             }
 
             $children = $parent->children()
+                ->with(['translations', 'translation'])
                 ->where('status', 1)
                 ->orderBy('position', 'ASC')
                 ->get();
@@ -40,6 +47,7 @@ class RestCategoryTreeProvider implements ProviderInterface
         }
 
         $categories = Category::query()
+            ->with(['translations', 'translation'])
             ->where('status', 1)
             ->orderBy('position', 'ASC')
             ->whereIsRoot()
@@ -59,6 +67,7 @@ class RestCategoryTreeProvider implements ProviderInterface
 
         foreach ($categories as $category) {
             $children = $category->children()
+                ->with(['translations', 'translation'])
                 ->where('status', 1)
                 ->orderBy('position', 'ASC')
                 ->get();

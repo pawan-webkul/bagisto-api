@@ -7,6 +7,7 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\GraphQl\Mutation;
 use Symfony\Component\Serializer\Annotation\Groups;
+use Webkul\BagistoApi\Dto\CartData;
 use Webkul\BagistoApi\Dto\MoveWishlistToCartInput;
 use Webkul\BagistoApi\State\MoveWishlistToCartProcessor;
 
@@ -23,6 +24,7 @@ use Webkul\BagistoApi\State\MoveWishlistToCartProcessor;
         new Post(
             uriTemplate: '/move-wishlist-to-carts',
             input: MoveWishlistToCartInput::class,
+            output: CartData::class,
             processor: MoveWishlistToCartProcessor::class,
             denormalizationContext: [
                 'allow_extra_attributes' => true,
@@ -46,7 +48,7 @@ use Webkul\BagistoApi\State\MoveWishlistToCartProcessor;
                 ],
             ],
             input: MoveWishlistToCartInput::class,
-            output: self::class,
+            output: CartData::class,
             processor: MoveWishlistToCartProcessor::class,
             normalizationContext: [
                 'groups' => ['mutation'],
@@ -69,4 +71,3 @@ class MoveWishlistToCart
         $this->id = $id;
     }
 }
-

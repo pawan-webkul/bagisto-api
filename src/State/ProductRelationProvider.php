@@ -36,6 +36,7 @@ class ProductRelationProvider implements ProviderInterface
             'relatedProducts' => 'related_products',
             'superAttributes' => 'super_attributes',
             'reviews'         => 'reviews',
+            'bookingProducts' => 'booking_products',
         ];
 
         if (! isset($relationMethods[$fieldName])) {

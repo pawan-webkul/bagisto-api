@@ -15,6 +15,63 @@ use Webkul\BagistoApi\Tests\GraphQLTestCase;
  */
 class CategoryTest extends GraphQLTestCase
 {
+    /**
+     * Set up the test - seed required category data
+     */
+    public function setUp(): void
+    {
+        parent::setUp();
+        
+        $this->seedRequiredData();
+        
+        // Ensure we have a parent category with ID 1 that has children for treeCategories tests
+        $parentCategory = \Webkul\Category\Models\Category::find(1);
+        
+        if ($parentCategory) {
+            // Delete any existing children to ensure clean state
+            $parentCategory->children()->delete();
+            
+            // Create a child category under the parent
+            $childCategory = \Webkul\Category\Models\Category::factory()->create([
+                'parent_id' => $parentCategory->id,
+                'position'  => 1,
+                'status'    => 1,
+            ]);
+            
+            // Create translation for the child category
+            \Webkul\Category\Models\CategoryTranslation::factory()->create([
+                'category_id' => $childCategory->id,
+                'locale'      => 'en',
+                'name'        => 'Test Child Category',
+                'slug'        => 'test-child-category',
+            ]);
+            
+            // Create a grandchild category under the child (for testing children of children)
+            $grandchildCategory = \Webkul\Category\Models\Category::factory()->create([
+                'parent_id' => $childCategory->id,
+                'position'  => 1,
+                'status'    => 1,
+            ]);
+            
+            // Create translation for the grandchild category
+            \Webkul\Category\Models\CategoryTranslation::factory()->create([
+                'category_id' => $grandchildCategory->id,
+                'locale'      => 'en',
+                'name'        => 'Test Grandchild Category',
+                'slug'        => 'test-grandchild-category',
+            ]);
+            
+            // Also ensure parent has translation
+            if ($parentCategory->translations()->count() === 0) {
+                \Webkul\Category\Models\CategoryTranslation::factory()->create([
+                    'category_id' => $parentCategory->id,
+                    'locale'      => 'en',
+                    'name'        => 'Root Category',
+                    'slug'        => 'root-category',
+                ]);
+            }
+        }
+    }
 
     /**
      * Test: Query treeCategories with parentId

@@ -173,7 +173,7 @@ class CustomerProfileProcessor implements ProcessorInterface
 
         $output = CustomerProfileHelper::mapCustomerToProfileOutput($authenticatedCustomer);
         $output->success = true;
-        $output->message = __('bagistoapi::app.graphql.customer.profile-updated');
+        $output->message = __('bagistoapi::app.graphql.customer-profile.profile-updated');
 
         return $output;
 

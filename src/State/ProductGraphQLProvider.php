@@ -58,21 +58,33 @@ class ProductGraphQLProvider implements ProviderInterface
         switch ($sortKey) {
             case 'TITLE':
             case 'NAME':
-                $query->leftJoin('product_attribute_values as pav_name', function ($join) {
-                    $join->on('products.id', '=', 'pav_name.product_id')
-                         ->where('pav_name.attribute_id', 2);
-                })
-                ->orderBy('pav_name.text_value', $direction)
+                $prefix = \DB::getTablePrefix();
+
+                // Join for requested locale/channel
+                $query->leftJoin('product_attribute_values as pav_name_locale', function ($join) use ($locale, $channel) {
+                    $join->on('products.id', '=', 'pav_name_locale.product_id')
+                         ->where('pav_name_locale.attribute_id', 2);
+
+                    if ($locale) {
+                        $join->where('pav_name_locale.locale', $locale);
+                    }
+
+                    if ($channel) {
+                        $join->where('pav_name_locale.channel', $channel);
+                    }
+                });
+
+                // Fallback join for null locale/channel (default values)
+                $query->leftJoin('product_attribute_values as pav_name_fallback', function ($join) {
+                    $join->on('products.id', '=', 'pav_name_fallback.product_id')
+                         ->where('pav_name_fallback.attribute_id', 2)
+                         ->whereNull('pav_name_fallback.locale')
+                         ->whereNull('pav_name_fallback.channel');
+                });
+
+                $query->orderBy(\DB::raw("COALESCE({$prefix}pav_name_locale.text_value, {$prefix}pav_name_fallback.text_value)"), $direction)
                 ->orderBy('products.id', $direction)
                 ->select('products.*');
-
-                if ($locale) {
-                    $query->where('pav_name.locale', $locale);
-                }
-
-                if ($channel) {
-                    $query->where('pav_name.channel', $channel);
-                }
                 break;
 
             case 'CREATED_AT':

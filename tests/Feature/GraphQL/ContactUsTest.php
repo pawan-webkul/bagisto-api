@@ -45,7 +45,7 @@ class ContactUsTest extends GraphQLTestCase
         
         $this->assertTrue($contactUs['success'], 'Contact Us submission should be successful');
         $this->assertEquals(
-            'Your message has been submitted successfully. We will get back to you shortly.',
+            'Your inquiry has been submitted successfully. We will get back to you soon',
             $contactUs['message']
         );
     }
@@ -92,7 +92,7 @@ class ContactUsTest extends GraphQLTestCase
         
         $this->assertTrue($contactUs['success'], 'Contact Us submission should be successful');
         $this->assertEquals(
-            'Your message has been submitted successfully. We will get back to you shortly.',
+            'Your inquiry has been submitted successfully. We will get back to you soon',
             $contactUs['message']
         );
 

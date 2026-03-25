@@ -36,7 +36,7 @@ class CompareItemProcessor implements ProcessorInterface
         /** Handle REST POST — model received instead of DTO */
         if ($data instanceof CompareItem && $operation instanceof \ApiPlatform\Metadata\Post) {
             $input = new CreateCompareItemInput();
-            $input->productId = request()->input('product_id') ?? request()->input('productId');
+            $input->product_id = request()->input('product_id') ?? request()->input('productId');
 
             return $this->handleCreate($input, $context);
         }
@@ -59,11 +59,11 @@ class CompareItemProcessor implements ProcessorInterface
      */
     private function handleCreate(CreateCompareItemInput $input, array $context = []): CompareItem
     {
-        if (empty($input->productId)) {
+        if (empty($input->product_id)) {
             throw new InvalidInputException(__('bagistoapi::app.graphql.compare-item.product-id-required'));
         }
 
-        $product = Product::find($input->productId);
+        $product = Product::find($input->product_id);
         if (! $product) {
             throw new ResourceNotFoundException(__('bagistoapi::app.graphql.compare-item.product-not-found'));
         }
@@ -77,7 +77,7 @@ class CompareItemProcessor implements ProcessorInterface
         $customerId = $user->id;
 
         $existingItem = CompareItem::where('customer_id', $customerId)
-            ->where('product_id', $input->productId)
+            ->where('product_id', $input->product_id)
             ->first();
 
         if ($existingItem) {
@@ -85,7 +85,7 @@ class CompareItemProcessor implements ProcessorInterface
         }
 
         $compareItem = CompareItem::create([
-            'product_id' => $input->productId,
+            'product_id' => $input->product_id,
             'customer_id' => $customerId,
         ]);
 

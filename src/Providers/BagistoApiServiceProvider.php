@@ -34,6 +34,8 @@ use Webkul\BagistoApi\Serializer\TokenHeaderDenormalizer;
 use Webkul\BagistoApi\Services\CartTokenService;
 use Webkul\BagistoApi\Services\StorefrontKeyService;
 use Webkul\BagistoApi\Services\TokenHeaderService;
+use Webkul\BagistoApi\State\BookingSlotProvider;
+use Webkul\BagistoApi\State\PageProvider;
 use Webkul\BagistoApi\State\AttributeCollectionProvider;
 use Webkul\BagistoApi\State\AttributeOptionCollectionProvider;
 use Webkul\BagistoApi\State\AttributeOptionQueryProvider;
@@ -277,6 +279,9 @@ class BagistoApiServiceProvider extends ServiceProvider
         $this->app->tag(CountryStateCollectionProvider::class, ProviderInterface::class);
         $this->app->tag(CountryStateQueryProvider::class, ProviderInterface::class);
         $this->app->tag(CategoryTreeProvider::class, ProviderInterface::class);
+        $this->app->tag(BookingSlotProvider::class, ProviderInterface::class);
+        $this->app->tag(\Webkul\BagistoApi\State\CursorAwareCollectionProvider::class, ProviderInterface::class);
+        $this->app->tag(PageProvider::class, ProviderInterface::class);
         $this->app->tag(WishlistProvider::class, ProviderInterface::class);
         $this->app->tag(CompareItemProvider::class, ProviderInterface::class);
         $this->app->tag(CustomerReviewProvider::class, ProviderInterface::class);

@@ -44,7 +44,7 @@ class WishlistProcessor implements ProcessorInterface
         /** Handle REST POST — model received instead of DTO */
         if ($data instanceof Wishlist && $operation instanceof \ApiPlatform\Metadata\Post) {
             $input = new CreateWishlistInput();
-            $input->productId = request()->input('product_id') ?? request()->input('productId');
+            $input->product_id = request()->input('product_id') ?? request()->input('productId');
 
             return $this->handleCreate($input, $context);
         }
@@ -65,11 +65,11 @@ class WishlistProcessor implements ProcessorInterface
      */
     private function handleCreate(CreateWishlistInput $input, array $context = []): Wishlist
     {
-        if (empty($input->productId)) {
+        if (empty($input->product_id)) {
             throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.product-id-required'));
         }
 
-        $product = Product::find($input->productId);
+        $product = Product::find($input->product_id);
         if (! $product) {
             throw new ResourceNotFoundException(__('bagistoapi::app.graphql.wishlist.product-not-found'));
         }
@@ -84,7 +84,7 @@ class WishlistProcessor implements ProcessorInterface
         $channelId = core()->getCurrentChannel()->id;
 
         $existingItem = Wishlist::where('customer_id', $customerId)
-            ->where('product_id', $input->productId)
+            ->where('product_id', $input->product_id)
             ->where('channel_id', $channelId)
             ->first();
 
@@ -92,10 +92,10 @@ class WishlistProcessor implements ProcessorInterface
             throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.already-exists'));
         }
 
-        Event::dispatch('customer.wishlist.create.before', $input->productId);
+        Event::dispatch('customer.wishlist.create.before', $input->product_id);
 
         $wishlistItem = Wishlist::create([
-            'product_id'  => $input->productId,
+            'product_id'  => $input->product_id,
             'customer_id' => $customerId,
             'channel_id'  => $channelId,
         ]);
@@ -107,11 +107,11 @@ class WishlistProcessor implements ProcessorInterface
 
     private function handleToggle(CreateWishlistInput $input, array $context = []): Wishlist
     {
-        if (empty($input->productId)) {
+        if (empty($input->product_id)) {
             throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.product-id-required'));
         }
 
-        $product = Product::find($input->productId);
+        $product = Product::find($input->product_id);
         if (! $product) {
             throw new ResourceNotFoundException(__('bagistoapi::app.graphql.wishlist.product-not-found'));
         }
@@ -126,7 +126,7 @@ class WishlistProcessor implements ProcessorInterface
         $channelId = core()->getCurrentChannel()->id;
 
         $existingItem = Wishlist::where('customer_id', $customerId)
-            ->where('product_id', $input->productId)
+            ->where('product_id', $input->product_id)
             ->where('channel_id', $channelId)
             ->first();
 
@@ -138,10 +138,10 @@ class WishlistProcessor implements ProcessorInterface
             throw new InvalidInputException(__('bagistoapi::app.graphql.wishlist.removed'));
         }
 
-        Event::dispatch('customer.wishlist.create.before', $input->productId);
+        Event::dispatch('customer.wishlist.create.before', $input->product_id);
 
         $wishlistItem = Wishlist::create([
-            'product_id'  => $input->productId,
+            'product_id'  => $input->product_id,
             'customer_id' => $customerId,
             'channel_id'  => $channelId,
         ]);

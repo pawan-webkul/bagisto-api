@@ -147,9 +147,20 @@ class CartItemData
         $data->taxAmount = (float) ($item->tax_amount ?? 0);
         $data->baseTaxAmount = (float) ($item->base_tax_amount ?? 0);
 
-        // Product info
-        $data->options = $item->additional ?
-            (is_string($item->additional) ? json_decode($item->additional, true) : $item->additional) : null;
+        // Product info - extract formatted attributes (bundle options, configurable options, etc.)
+        $additional = $item->additional ?
+            (is_string($item->additional) ? json_decode($item->additional, true) : $item->additional) : [];
+
+        $attributes = ! empty($additional['attributes'])
+            ? array_values($additional['attributes'])
+            : null;
+
+        // For bundle products, enrich options with can_change_qty and is_required from DB
+        if ($attributes && $item->type === 'bundle') {
+            $attributes = self::enrichBundleOptions($attributes, $additional);
+        }
+
+        $data->options = $attributes;
 
         // Base image
         if ($item->product) {
@@ -163,5 +174,31 @@ class CartItemData
         }
 
         return $data;
+    }
+
+    /**
+     * Enrich bundle option attributes with can_change_qty and is_required from DB.
+     *
+     * Checkbox/Multiselect options: qty is fixed by admin (can_change_qty = false)
+     * Radio/Select options: qty can be changed by customer (can_change_qty = true)
+     */
+    private static function enrichBundleOptions(array $attributes, array $additional): array
+    {
+        $optionRepo = app(\Webkul\Product\Repositories\ProductBundleOptionRepository::class);
+
+        foreach ($attributes as &$attribute) {
+            $optionId = $attribute['option_id'] ?? null;
+
+            if (! $optionId) {
+                continue;
+            }
+
+            $bundleOption = $optionRepo->find($optionId);
+
+            $attribute['is_required'] = (bool) ($bundleOption?->is_required ?? false);
+            $attribute['can_change_qty'] = in_array($bundleOption?->type, ['radio', 'select']);
+        }
+
+        return $attributes;
     }
 }

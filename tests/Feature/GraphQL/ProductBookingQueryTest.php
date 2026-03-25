@@ -15,7 +15,40 @@ use Carbon\Carbon;
 class ProductBookingQueryTest extends GraphQLTestCase
 {
     /**
-     * Test querying appointment booking product
+     * Assert common product fields returned by the booking product query.
+     */
+    private function assertProductFields(array $data): void
+    {
+        $this->assertNotNull($data, 'product response is null');
+        $this->assertArrayHasKey('id', $data);
+        $this->assertArrayHasKey('name', $data);
+        $this->assertArrayHasKey('sku', $data);
+        $this->assertArrayHasKey('urlKey', $data);
+        $this->assertArrayHasKey('price', $data);
+        $this->assertNotNull($data['name']);
+    }
+
+    /**
+     * Extract the first booking product node from the response data.
+     */
+    private function extractBookingNode(array $data, string $expectedType): array
+    {
+        $this->assertArrayHasKey('bookingProducts', $data);
+        $edges = $data['bookingProducts']['edges'] ?? [];
+        $this->assertNotEmpty($edges, 'bookingProducts.edges should not be empty');
+
+        $node = $edges[0]['node'] ?? null;
+        $this->assertNotNull($node, 'bookingProducts first node is null');
+        $this->assertArrayHasKey('_id', $node);
+        $this->assertSame($expectedType, $node['type'] ?? '');
+
+        return $node;
+    }
+
+    // ─── Appointment ────────────────────────────────────────────────────
+
+    /**
+     * Test querying appointment booking product with full slot details.
      */
     public function test_get_appointment_booking_product(): void
     {
@@ -56,14 +89,34 @@ class ProductBookingQueryTest extends GraphQLTestCase
 
         $response->assertSuccessful();
 
-        $data = $response->json('data.product');
+        $json = $response->json();
+        $this->assertArrayNotHasKey('errors', $json, 'GraphQL errors: '.json_encode($json['errors'] ?? []));
 
-        $this->assertNotNull($data);
-        $this->assertArrayHasKey('bookingProducts', $data);
+        $data = $response->json('data.product');
+        $this->assertProductFields($data);
+
+        $node = $this->extractBookingNode($data, 'appointment');
+
+        // Appointment slot assertions
+        $slot = $node['appointmentSlot'] ?? null;
+        $this->assertNotNull($slot, 'appointmentSlot should not be null');
+        $this->assertArrayHasKey('id', $slot);
+        $this->assertArrayHasKey('_id', $slot);
+        $this->assertArrayHasKey('bookingProductId', $slot);
+        $this->assertSame((int) $bookingData['booking']->id, (int) $slot['bookingProductId']);
+        $this->assertArrayHasKey('duration', $slot);
+        $this->assertSame(30, (int) $slot['duration']);
+        $this->assertArrayHasKey('breakTime', $slot);
+        $this->assertSame(0, (int) $slot['breakTime']);
+        $this->assertArrayHasKey('sameSlotAllDays', $slot);
+        $this->assertArrayHasKey('slots', $slot);
+        $this->assertNotNull($slot['slots']);
     }
 
+    // ─── Rental ─────────────────────────────────────────────────────────
+
     /**
-     * Test querying rental booking product
+     * Test querying rental booking product with full slot details.
      */
     public function test_get_rental_booking_product(): void
     {
@@ -82,6 +135,8 @@ class ProductBookingQueryTest extends GraphQLTestCase
                     node {
                       _id
                       type
+                      availableFrom
+                      availableTo
                       rentalSlot {
                         id
                         _id
@@ -105,14 +160,38 @@ class ProductBookingQueryTest extends GraphQLTestCase
 
         $response->assertSuccessful();
 
-        $data = $response->json('data.product');
+        $json = $response->json();
+        $this->assertArrayNotHasKey('errors', $json, 'GraphQL errors: '.json_encode($json['errors'] ?? []));
 
-        $this->assertNotNull($data);
-        $this->assertArrayHasKey('bookingProducts', $data);
+        $data = $response->json('data.product');
+        $this->assertProductFields($data);
+
+        $node = $this->extractBookingNode($data, 'rental');
+
+        // availableFrom/availableTo present (nullable for rental)
+        $this->assertArrayHasKey('availableFrom', $node);
+        $this->assertArrayHasKey('availableTo', $node);
+
+        // Rental slot assertions
+        $slot = $node['rentalSlot'] ?? null;
+        $this->assertNotNull($slot, 'rentalSlot should not be null');
+        $this->assertArrayHasKey('id', $slot);
+        $this->assertArrayHasKey('_id', $slot);
+        $this->assertArrayHasKey('bookingProductId', $slot);
+        $this->assertSame((int) $bookingData['booking']->id, (int) $slot['bookingProductId']);
+        $this->assertArrayHasKey('rentingType', $slot);
+        $this->assertSame('daily', $slot['rentingType']);
+        $this->assertArrayHasKey('dailyPrice', $slot);
+        $this->assertSame(10.0, (float) $slot['dailyPrice']);
+        $this->assertArrayHasKey('hourlyPrice', $slot);
+        $this->assertArrayHasKey('sameSlotAllDays', $slot);
+        $this->assertArrayHasKey('slots', $slot);
     }
 
+    // ─── Default ────────────────────────────────────────────────────────
+
     /**
-     * Test querying default booking product
+     * Test querying default booking product with full slot details.
      */
     public function test_get_default_booking_product(): void
     {
@@ -152,14 +231,33 @@ class ProductBookingQueryTest extends GraphQLTestCase
 
         $response->assertSuccessful();
 
-        $data = $response->json('data.product');
+        $json = $response->json();
+        $this->assertArrayNotHasKey('errors', $json, 'GraphQL errors: '.json_encode($json['errors'] ?? []));
 
-        $this->assertNotNull($data);
-        $this->assertArrayHasKey('bookingProducts', $data);
+        $data = $response->json('data.product');
+        $this->assertProductFields($data);
+
+        $node = $this->extractBookingNode($data, 'default');
+
+        // Default slot assertions
+        $slot = $node['defaultSlot'] ?? null;
+        $this->assertNotNull($slot, 'defaultSlot should not be null');
+        $this->assertArrayHasKey('id', $slot);
+        $this->assertArrayHasKey('_id', $slot);
+        $this->assertArrayHasKey('bookingType', $slot);
+        $this->assertSame('many', $slot['bookingType']);
+        $this->assertArrayHasKey('duration', $slot);
+        $this->assertSame(30, (int) $slot['duration']);
+        $this->assertArrayHasKey('breakTime', $slot);
+        $this->assertSame(0, (int) $slot['breakTime']);
+        $this->assertArrayHasKey('slots', $slot);
+        $this->assertNotNull($slot['slots']);
     }
 
+    // ─── Table ──────────────────────────────────────────────────────────
+
     /**
-     * Test querying table booking product
+     * Test querying table booking product with full slot details.
      */
     public function test_get_table_booking_product(): void
     {
@@ -178,6 +276,8 @@ class ProductBookingQueryTest extends GraphQLTestCase
                     node {
                       _id
                       type
+                      availableFrom
+                      availableTo
                       tableSlot {
                         id
                         _id
@@ -203,14 +303,42 @@ class ProductBookingQueryTest extends GraphQLTestCase
 
         $response->assertSuccessful();
 
-        $data = $response->json('data.product');
+        $json = $response->json();
+        $this->assertArrayNotHasKey('errors', $json, 'GraphQL errors: '.json_encode($json['errors'] ?? []));
 
-        $this->assertNotNull($data);
-        $this->assertArrayHasKey('bookingProducts', $data);
+        $data = $response->json('data.product');
+        $this->assertProductFields($data);
+
+        $node = $this->extractBookingNode($data, 'table');
+
+        $this->assertArrayHasKey('availableFrom', $node);
+        $this->assertArrayHasKey('availableTo', $node);
+
+        // Table slot assertions
+        $slot = $node['tableSlot'] ?? null;
+        $this->assertNotNull($slot, 'tableSlot should not be null');
+        $this->assertArrayHasKey('id', $slot);
+        $this->assertArrayHasKey('_id', $slot);
+        $this->assertArrayHasKey('bookingProductId', $slot);
+        $this->assertSame((int) $bookingData['booking']->id, (int) $slot['bookingProductId']);
+        $this->assertArrayHasKey('priceType', $slot);
+        $this->assertSame('table', $slot['priceType']);
+        $this->assertArrayHasKey('guestLimit', $slot);
+        $this->assertSame(1, (int) $slot['guestLimit']);
+        $this->assertArrayHasKey('duration', $slot);
+        $this->assertSame(30, (int) $slot['duration']);
+        $this->assertArrayHasKey('breakTime', $slot);
+        $this->assertSame(0, (int) $slot['breakTime']);
+        $this->assertArrayHasKey('preventSchedulingBefore', $slot);
+        $this->assertArrayHasKey('sameSlotAllDays', $slot);
+        $this->assertArrayHasKey('slots', $slot);
+        $this->assertNotNull($slot['slots']);
     }
 
+    // ─── Event ──────────────────────────────────────────────────────────
+
     /**
-     * Test querying event booking product
+     * Test querying event booking product with full ticket details.
      */
     public function test_get_event_booking_product(): void
     {
@@ -256,10 +384,32 @@ class ProductBookingQueryTest extends GraphQLTestCase
 
         $response->assertSuccessful();
 
-        $data = $response->json('data.product');
+        $json = $response->json();
+        $this->assertArrayNotHasKey('errors', $json, 'GraphQL errors: '.json_encode($json['errors'] ?? []));
 
-        $this->assertNotNull($data);
-        $this->assertArrayHasKey('bookingProducts', $data);
+        $data = $response->json('data.product');
+        $this->assertProductFields($data);
+
+        $node = $this->extractBookingNode($data, 'event');
+
+        // Event tickets assertions
+        $this->assertArrayHasKey('eventTickets', $node);
+        $ticketEdges = $node['eventTickets']['edges'] ?? [];
+        $this->assertNotEmpty($ticketEdges, 'eventTickets.edges should not be empty');
+
+        $ticket = $ticketEdges[0]['node'] ?? null;
+        $this->assertNotNull($ticket, 'event ticket node is null');
+        $this->assertArrayHasKey('id', $ticket);
+        $this->assertArrayHasKey('_id', $ticket);
+        $this->assertArrayHasKey('bookingProductId', $ticket);
+        $this->assertSame((int) $bookingData['booking']->id, (int) $ticket['bookingProductId']);
+        $this->assertArrayHasKey('price', $ticket);
+        $this->assertSame(10.0, (float) $ticket['price']);
+        $this->assertArrayHasKey('qty', $ticket);
+        $this->assertSame(100, (int) $ticket['qty']);
+        $this->assertArrayHasKey('specialPrice', $ticket);
+        $this->assertArrayHasKey('specialPriceFrom', $ticket);
+        $this->assertArrayHasKey('specialPriceTo', $ticket);
     }
 
     /**

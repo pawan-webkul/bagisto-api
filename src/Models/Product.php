@@ -509,6 +509,8 @@ class Product extends BaseProduct
         'cost', 'meta_description', 'length', 'width', 'height',
         'color', 'size', 'brand', 'locale', 'channel', 'description_html',
         'minimum_price', 'maximum_price', 'regular_minimum_price', 'regular_maximum_price',
+        'formatted_price', 'formatted_special_price', 'formatted_minimum_price',
+        'formatted_maximum_price', 'formatted_regular_minimum_price', 'formatted_regular_maximum_price',
         'index', 'combinations', 'super_attribute_options',
     ];
 
@@ -2112,5 +2114,77 @@ class Product extends BaseProduct
     public function getRegular_maximum_price(): float
     {
         return $this->getRegularMaximumPriceAttribute();
+    }
+
+    // ─── Formatted Price Accessors ──────────────────────────────────────
+
+    public function getFormattedPriceAttribute(): ?string
+    {
+        $price = $this->getPriceAttribute();
+
+        return $price !== null ? core()->currency($price) : null;
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_price(): ?string
+    {
+        return $this->getFormattedPriceAttribute();
+    }
+
+    public function getFormattedSpecialPriceAttribute(): ?string
+    {
+        $specialPrice = $this->getSpecialPriceAttribute();
+
+        return $specialPrice ? core()->currency($specialPrice) : null;
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_special_price(): ?string
+    {
+        return $this->getFormattedSpecialPriceAttribute();
+    }
+
+    public function getFormattedMinimumPriceAttribute(): ?string
+    {
+        return core()->currency($this->getMinimumPriceAttribute());
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_minimum_price(): ?string
+    {
+        return $this->getFormattedMinimumPriceAttribute();
+    }
+
+    public function getFormattedMaximumPriceAttribute(): ?string
+    {
+        return core()->currency($this->getMaximumPriceAttribute());
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_maximum_price(): ?string
+    {
+        return $this->getFormattedMaximumPriceAttribute();
+    }
+
+    public function getFormattedRegularMinimumPriceAttribute(): ?string
+    {
+        return core()->currency($this->getRegularMinimumPriceAttribute());
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_regular_minimum_price(): ?string
+    {
+        return $this->getFormattedRegularMinimumPriceAttribute();
+    }
+
+    public function getFormattedRegularMaximumPriceAttribute(): ?string
+    {
+        return core()->currency($this->getRegularMaximumPriceAttribute());
+    }
+
+    #[ApiProperty(writable: false, readable: true, required: false)]
+    public function getFormatted_regular_maximum_price(): ?string
+    {
+        return $this->getFormattedRegularMaximumPriceAttribute();
     }
 }

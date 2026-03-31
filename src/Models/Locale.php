@@ -20,8 +20,8 @@ use Webkul\BagistoApi\Resolver\BaseQueryItemResolver;
         new Query(resolver: BaseQueryItemResolver::class),
         new QueryCollection,
     ]
-
-)]
+)
+]
 class Locale extends \Webkul\Core\Models\Locale
 {
     /**
@@ -32,4 +32,16 @@ class Locale extends \Webkul\Core\Models\Locale
     {
         return $this->id;
     }
+
+    /**
+     * Expose logo path for API
+     */
+    #[ApiProperty(writable: false, readable: true)]
+    public ?string $logoPath = null;
+
+    /**
+     * Expose logo URL for API
+     */
+    #[ApiProperty(writable: false, readable: true)]
+    public ?string $logoUrl = null;
 }

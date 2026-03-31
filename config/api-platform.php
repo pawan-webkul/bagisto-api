@@ -40,6 +40,7 @@ return [
             'Webkul\BagistoApi\Http\Middleware\HandleInvalidInputException',
             'Webkul\BagistoApi\Http\Middleware\SecurityHeaders',
             'Webkul\BagistoApi\Http\Middleware\LogApiRequests',
+            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
             'Webkul\BagistoApi\Http\Middleware\VerifyStorefrontKey',
             'Webkul\BagistoApi\Http\Middleware\BagistoApiDocumentationMiddleware',
             'Webkul\BagistoApi\Http\Middleware\ForceApiJson',
@@ -105,6 +106,7 @@ return [
         ],
         // GraphQL middleware for authentication and rate limiting
         'middleware' => [
+            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
             'Webkul\BagistoApi\Http\Middleware\VerifyGraphQLStorefrontKey',
         ],
     ],
@@ -225,7 +227,4 @@ return [
         'cache_ttl'             => env('API_KEY_CACHE_TTL', 3600),
         'storefront_key_prefix' => env('STOREFRONT_KEY_PREFIX', 'pk_storefront_'),
     ],
-
-    'storefront_key'      => env('STOREFRONT_PLAYGROUND_KEY', 'pk_storefront_xxxxx'),
-    'auto_inject_key'     => env('API_PLAYGROUND_AUTO_INJECT_STOREFRONT_KEY', 'true'),
 ];

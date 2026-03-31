@@ -4,7 +4,7 @@ namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
-use Illuminate\Auth\AuthenticationException;
+use Webkul\BagistoApi\Exception\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Webkul\BagistoApi\Models\Customer;
 use Webkul\BagistoApi\Validators\CustomerValidator;
 use Webkul\Customer\Repositories\CustomerRepository;
+use Webkul\BagistoApi\Exception\InvalidInputException;
 
 class CustomerProcessor implements ProcessorInterface
 {
@@ -34,9 +35,15 @@ class CustomerProcessor implements ProcessorInterface
                     throw $e;
                 }
 
+                // Normalize gender if provided
+                $normalizedGender = $this->validator->validateGender($data->gender ?? null);
+                if ($normalizedGender !== null) {
+                    $data->gender = $normalizedGender;
+                }
+
                 if (! empty($data->password) && ! empty($data->confirm_password)) {
                     if ($data->password !== $data->confirm_password) {
-                        throw new \InvalidArgumentException(__('bagistoapi::app.graphql.customer.password-mismatch'));
+                        throw new InvalidInputException(__('bagistoapi::app.graphql.customer.password-mismatch'));
                     }
                 }
 
@@ -57,18 +64,30 @@ class CustomerProcessor implements ProcessorInterface
                     'is_suspended'              => $data->is_suspended ?? 0,
                     'subscribed_to_news_letter' => $data->subscribed_to_news_letter ?? false,
                     'api_token'                 => Str::random(80),
-                    'token'                     => md5(uniqid(rand(), true)),
                 ];
 
                 Event::dispatch('customer.registration.before');
 
                 $customer = $this->customerRepository->create($customerData);
 
+                // Dispatch event to save device_token - PushNotification package will handle this
+                $deviceToken = $data->device_token ?? $data->deviceToken ?? null;
+                if ($deviceToken) {
+                    Event::dispatch('bagistoapi.customer.device-token.save', [
+                        'customerId'  => $customer->id,
+                        'deviceToken' => $deviceToken,
+                    ]);
+                }
+
                 Event::dispatch('customer.create.after', $customer);
 
                 Event::dispatch('customer.registration.after', $customer);
 
                 $freshCustomer = Customer::findOrFail($customer->id);
+
+                /** Generate a Sanctum token so the customer can use it immediately after registration */
+                $sanctumToken = $freshCustomer->createToken('customer-registration')->plainTextToken;
+                $freshCustomer->token = $sanctumToken;
 
                 return $freshCustomer;
             } elseif ($operation->getName() === 'update') {
@@ -81,10 +100,10 @@ class CustomerProcessor implements ProcessorInterface
 
                 if ($passwordWasChanged) {
                     if (! isset($data->confirm_password) || empty($data->confirm_password)) {
-                        throw new \InvalidArgumentException(__('bagistoapi::app.graphql.customer.confirm-password-required'));
+                        throw new InvalidInputException(__('bagistoapi::app.graphql.customer.confirm-password-required'));
                     }
                     if ($data->password !== $data->confirm_password) {
-                        throw new \InvalidArgumentException(__('bagistoapi::app.graphql.customer.password-mismatch'));
+                        throw new InvalidInputException(__('bagistoapi::app.graphql.customer.password-mismatch'));
                     }
                     if (! Hash::isHashed($data->password)) {
                         $data->password = Hash::make($data->password);
@@ -95,6 +114,11 @@ class CustomerProcessor implements ProcessorInterface
                 }
 
                 $this->validator->validateForUpdate($data);
+
+                // Normalize gender if provided
+                if (isset($data->gender) && $data->gender !== null) {
+                    $data->gender = $this->validator->validateGender($data->gender);
+                }
 
                 $data->save();
 

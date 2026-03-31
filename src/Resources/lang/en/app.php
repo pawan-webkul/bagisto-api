@@ -1,6 +1,7 @@
 <?php
 
 return [
+    
     'graphql' => [
         'cart' => [
             'authentication-required'           => 'Authentication token is required',
@@ -20,6 +21,10 @@ return [
             'item-ids-required'                 => 'Item IDs array is required',
             'coupon-code-required'              => 'Coupon code is required',
             'address-data-required'             => 'Country, state, and postcode are required',
+            'grouped-qty-required'             => 'Grouped product requires selected quantities. Pass groupedQty as JSON string, e.g. {"101":2,"102":1}.',
+            'grouped-qty-must-include-all'     => 'Grouped product requires quantities for all associated products. Missing IDs: :ids.',
+            'grouped-qty-invalid-associated'   => 'Grouped product quantities contain invalid associated product IDs: :ids.',
+            'grouped-qty-invalid-quantity'     => 'Invalid quantity provided for associated product ID :id. Quantity must be a non-negative integer.',
 
             'add-product-failed'                => 'Failed to add product to cart',
             'update-item-failed'                => 'Failed to update cart item',
@@ -87,6 +92,7 @@ return [
         'customer-profile' => [
             'authentication-required'           => 'Authentication token is required. Please provide token in query input',
             'invalid-token'                     => 'Invalid or expired token',
+            'profile-updated'                  => 'Customer profile updated successfully',
         ],
 
         'customer' => [
@@ -96,17 +102,69 @@ return [
             'id-required'                       => 'Customer ID is required',
             'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/admin/customers/1" or numeric ID',
             'not-found'                         => 'Customer not found',
+            'phone-special-chars-not-allowed'  => 'Mobile number can only contain digits. Special characters are not allowed',
+            'invalid-gender'                    => 'Invalid gender value ":gender". Allowed values are: :valid',
         ],
 
         'product-review' => [
+            'id-required'                       => 'Product review ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/reviews/1" or numeric ID',
+            'not-found'                         => 'Product review with ID ":id" not found',
             'product-id-required'               => 'Product ID is required',
             'product-not-found'                 => 'Product not found',
             'rating-invalid'                    => 'Rating must be between 1 and 5',
             'title-required'                    => 'Review title is required',
             'comment-required'                  => 'Review comment is required',
+            'review-disabled'                   => 'Product reviews are currently disabled',
+            'guest-review-disabled'             => 'Guest reviews are not allowed. Please login to submit a review',
+        ],
+
+        'customer-review' => [
+            'id-required'                       => 'Customer review ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/customer-reviews/1" or numeric ID',
+            'not-found'                         => 'Customer review with ID ":id" not found',
+        ],
+
+        'contact-us' => [
+            'success'                           => 'Your inquiry has been submitted successfully. We will get back to you soon',
+            'failed'                            => 'Unable to send your inquiry at this time. Please try again later',
+            'invalid-input'                     => 'Invalid contact form data',
+        ],
+
+        'customer-order' => [
+            'id-required'                       => 'Customer order ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/customer-orders/1" or numeric ID',
+            'not-found'                         => 'Customer order with ID ":id" not found',
+        ],
+
+        'cancel-order' => [
+            'order-id-required'                 => 'Order ID is required to cancel an order',
+            'not-found'                         => 'Order with ID ":id" not found or does not belong to this customer',
+            'cancel-success'                    => 'Order has been canceled successfully',
+            'cancel-failed'                     => 'Order cannot be canceled. It may have already been processed, shipped, or canceled',
+        ],
+
+        'reorder' => [
+            'order-id-required'                 => 'Order ID is required to reorder',
+            'not-found'                         => 'Order with ID ":id" not found or does not belong to this customer',
+            'reorder-success'                   => ':count item(s) from your previous order have been added to your cart',
+            'no-items-added'                    => 'No items could be added to the cart. Products may be out of stock or unavailable',
+        ],
+
+        'customer-downloadable-product' => [
+            'id-required'                       => 'Customer downloadable product ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/customer-downloadable-products/1" or numeric ID',
+            'not-found'                         => 'Customer downloadable product with ID ":id" not found',
+        ],
+
+        'customer-invoice' => [
+            'id-required'                       => 'Customer invoice ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/customer-invoices/1" or numeric ID',
+            'not-found'                         => 'Customer invoice with ID ":id" not found',
         ],
 
         'product' => [
+            'not-found'                         => 'Product not found',
             'not-found-with-sku'                => 'No product found with SKU',
             'not-found-with-url-key'            => 'No product found with URL key',
             'parameters-required'               => 'At least one of the following parameters must be provided: "sku", "id", "urlKey"',
@@ -116,7 +174,7 @@ return [
             'no-token-provided'                 => 'No authentication token provided. Please provide token in Authorization header as "Bearer <token>" or in input.token field',
             'invalid-or-expired-token'          => 'Invalid or expired token',
             'request-not-found'                 => 'Request not found in context',
-            'token-required'                    => 'Authentication token is required. Please provide the token either in the GraphQL mutation input field or in the Authorization header as "Bearer <token>"',
+            'token-required'                    => 'Authentication token is required. Please provide the token in the Authorization header as "Bearer <token>"',
             'unknown-resource'                  => 'Unknown resource',
             'cannot-update-other-profile'       => 'Unauthorized: Cannot update another customer profile',
         ],
@@ -131,18 +189,15 @@ return [
         'attribute' => [
             'code-already-exists'               => 'The attribute code already exists',
             'option-id-required'                => 'The "attributeId" parameter is required when querying attribute options directly',
+            'id-required'                       => 'Attribute ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/attributes/1" or numeric ID',
+            'not-found'                         => 'Attribute not found',
         ],
 
         'attribute-option' => [
             'id-required'                       => 'Attribute option ID is required',
             'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/attribute-options/1" or numeric ID',
             'not-found'                         => 'Attribute option not found',
-        ],
-
-        'attribute' => [
-            'id-required'                       => 'Attribute ID is required',
-            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/attributes/1" or numeric ID',
-            'not-found'                         => 'Attribute not found',
         ],
 
         'channel' => [
@@ -251,6 +306,36 @@ return [
             'id-required'                       => 'Category ID is required',
             'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/categories/1" or numeric ID',
             'not-found'                         => 'Category not found',
+        ],
+
+        'compare-item' => [
+            'id-required'                       => 'Compare item ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/compare-items/1" or numeric ID',
+            'not-found'                         => 'Compare item not found',
+            'product-id-required'               => 'Product ID is required',
+            'customer-id-required'              => 'Customer ID is required',
+            'product-not-found'                 => 'Product not found',
+            'customer-not-found'                => 'Customer not found',
+            'already-exists'                    => 'This product is already in your comparison list',
+            'delete-all-success'                => 'All compare items have been removed successfully',
+        ],
+
+        'wishlist' => [
+            'id-required'                       => 'Wishlist item ID is required',
+            'invalid-id-format'                 => 'Invalid ID format. Expected IRI format like "/api/shop/wishlists/1" or numeric ID',
+            'not-found'                         => 'Wishlist item not found',
+            'product-id-required'               => 'Product ID is required',
+            'customer-id-required'              => 'Customer ID is required',
+            'product-not-found'                 => 'Product not found',
+            'customer-not-found'                => 'Customer not found',
+            'already-exists'                    => 'This product is already in your wishlist',
+            'removed'                           => 'Item Successfully Removed From Wishlist',
+            'product-removed'                   => 'Product has been removed',
+            'wishlist-item-id-required'         => 'Wishlist item ID is required',
+            'invalid-quantity'                  => 'Quantity must be greater than 0',            
+            'move-to-cart-missing-options'      => 'Product has missing required options. Please configure it manually',
+            'moved-to-cart-success'             => 'Item moved to cart successfully',
+            'delete-all-success'                => 'All wishlist items have been removed successfully',
         ],
 
         'theme-customization' => [

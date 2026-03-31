@@ -2,6 +2,7 @@
 
 namespace Webkul\BagistoApi\Models;
 
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 
 #[ApiResource(
@@ -14,4 +15,13 @@ class ThemeCustomizationTranslation extends \Webkul\Theme\Models\ThemeCustomizat
     protected $casts = [
         'options' => 'string',
     ];
+
+    /**
+     * Get unique translation identifier for API
+     */
+    #[ApiProperty(identifier: true, writable: false)]
+    public function getId(): int
+    {
+        return $this->id;
+    }
 }

@@ -4,6 +4,7 @@ namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Webkul\BagistoApi\Dto\LoginInput;
@@ -27,6 +28,7 @@ class LoginProcessor implements ProcessorInterface
                 if (! $customer || ! Hash::check($data->password, $customer->password)) {
                     return (object) [
                         'id'       => 0,
+                        '_id'      => 0,
                         'apiToken' => '',
                         'token'    => '',
                         'success'  => false,
@@ -37,6 +39,7 @@ class LoginProcessor implements ProcessorInterface
                 if ($customer->is_suspended) {
                     return (object) [
                         'id'       => 0,
+                        '_id'      => 0,
                         'apiToken' => '',
                         'token'    => '',
                         'success'  => false,
@@ -49,10 +52,20 @@ class LoginProcessor implements ProcessorInterface
                     $customer->save();
                 }
 
+                // Dispatch event to save device_token - PushNotification package will handle this
+                $deviceToken = $data->deviceToken ?? null;
+                if ($deviceToken) {
+                    Event::dispatch('bagistoapi.customer.device-token.save', [
+                        'customerId'  => $customer->id,
+                        'deviceToken' => $deviceToken,
+                    ]);
+                }
+
                 $token = $customer->createToken('customer-login')->plainTextToken;
 
                 return (object) [
                     'id'       => $customer->id,
+                    '_id'      => $customer->id,
                     'apiToken' => $customer->api_token,
                     'token'    => $token,
                     'success'  => true,
@@ -63,6 +76,7 @@ class LoginProcessor implements ProcessorInterface
 
         return (object) [
             'id'       => 0,
+            '_id'      => 0,
             'apiToken' => '',
             'token'    => '',
             'success'  => false,

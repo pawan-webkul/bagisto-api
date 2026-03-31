@@ -16,6 +16,7 @@ use Webkul\BagistoApi\Exception\ResourceNotFoundException;
 use Webkul\BagistoApi\Facades\CartTokenFacade;
 use Webkul\BagistoApi\Facades\TokenHeaderFacade;
 use Webkul\BagistoApi\Repositories\GuestCartTokensRepository;
+use Webkul\BagistoApi\Service\BookingSlotParser;
 use Webkul\Checkout\Facades\Cart as CartFacade;
 use Webkul\Checkout\Models\Cart as CartModel;
 use Webkul\Checkout\Repositories\CartRepository;
@@ -130,6 +131,18 @@ class CartTokenProcessor implements ProcessorInterface
     {
         if (! $data) {
             $data = new CartInput;
+        }
+
+        // Handle GraphQL mutation input - data is wrapped in 'input' key
+        if (isset($context['args']['input']) && is_array($context['args']['input'])) {
+            $inputData = $context['args']['input'];
+            
+            // Map input fields to CartInput object
+            foreach ($inputData as $key => $value) {
+                if (property_exists($data, $key)) {
+                    $data->$key = $value;
+                }
+            }
         }
 
         if ($operationName === 'read' && isset($context['args'])) {
@@ -315,14 +328,91 @@ class CartTokenProcessor implements ProcessorInterface
      */
     private function handleAddProduct(?CartModel $cart, ?Customer $customer, CartInput $data): array
     {
-        if (! $data->productId || ! $data->quantity) {
-            throw new InvalidInputException(__('bagistoapi::app.graphql.cart.product-id-quantity-required'));
+        if (! $data->productId) {
+            throw new InvalidInputException(__('bagistoapi::app.graphql.cart.product-id-required'));
+        }
+
+        /**
+         * Quantity is required by most product types, but for some types (e.g. booking appointment/event)
+         * the storefront does not allow changing quantity. Default to 1 when omitted.
+         */
+        if ($data->quantity === null) {
+            $data->quantity = 1;
+        }
+
+        if ($data->quantity < 1) {
+            throw new InvalidInputException(__('bagistoapi::app.graphql.cart.invalid-quantity'));
         }
 
         $product = \Webkul\Product\Models\Product::find($data->productId);
         if (! $product) {
             throw new ResourceNotFoundException(__('bagistoapi::app.graphql.cart.product-not-found'));
         }
+
+        if (! $product->status) {
+            throw new \Exception(__('shop::app.checkout.cart.inactive-add'));
+        }
+
+        $groupedQty = $this->normalizeJsonFieldToArray($data->groupedQty, 'groupedQty')
+            ?? (is_array($data->qty) ? $data->qty : null);
+
+        if ($product->type === 'grouped' && ! is_array($groupedQty)) {
+            throw new InvalidInputException(__('bagistoapi::app.graphql.cart.grouped-qty-required'));
+        }
+
+        if ($product->type === 'grouped') {
+            $product->loadMissing(
+                'grouped_products',
+                'grouped_products.associated_product'
+            );
+
+            $associatedProductIds = $product->grouped_products
+                ->pluck('associated_product_id')
+                ->filter()
+                ->map(fn ($id) => (string) $id)
+                ->values()
+                ->all();
+
+            $providedKeys = array_map(
+                static fn ($key) => (string) $key,
+                array_keys($groupedQty ?? [])
+            );
+
+            $missingIds = array_values(array_diff($associatedProductIds, $providedKeys));
+            if (! empty($missingIds)) {
+                throw new InvalidInputException(
+                    __('bagistoapi::app.graphql.cart.grouped-qty-must-include-all', [
+                        'ids' => implode(', ', $missingIds),
+                    ])
+                );
+            }
+
+            $unexpectedIds = array_values(array_diff($providedKeys, $associatedProductIds));
+            if (! empty($unexpectedIds)) {
+                throw new InvalidInputException(
+                    __('bagistoapi::app.graphql.cart.grouped-qty-invalid-associated', [
+                        'ids' => implode(', ', $unexpectedIds),
+                    ])
+                );
+            }
+
+            foreach (($groupedQty ?? []) as $associatedId => $qty) {
+                if ($qty === null || $qty === '') {
+                    continue;
+                }
+
+                if (! is_numeric($qty) || (int) $qty < 0) {
+                    throw new InvalidInputException(
+                        __('bagistoapi::app.graphql.cart.grouped-qty-invalid-quantity', [
+                            'id' => (string) $associatedId,
+                        ])
+                    );
+                }
+            }
+        }
+
+        $redirectUri = null;
+        $guestCartTokenDetail = null;
 
         if (! $cart) {
             $channel = core()->getCurrentChannel();
@@ -343,25 +433,85 @@ class CartTokenProcessor implements ProcessorInterface
         }
 
         try {
+            // Handle is_buy_now - deactivate cart and prepare for checkout
+            if (! empty($data->isBuyNow)) {
+                CartFacade::deActivateCart();
+                
+                // Create a new cart for buy now
+                $channel = core()->getCurrentChannel();
+                if ($customer) {
+                    $cart = $this->cartRepository->create([
+                        'customer_id' => $customer->id,
+                        'channel_id'  => $channel->id,
+                        'is_active'   => 1,
+                    ]);
+                } else {
+                    $cart = $this->cartRepository->create([
+                        'channel_id' => $channel->id,
+                        'is_active'  => 1,
+                    ]);
+                    $guestCartTokenDetail = $this->guestCartTokensRepository->createToken($cart->id);
+                }
+
+                $redirectUri = route('shop.checkout.onepage.index');
+            }
+
             Event::dispatch('cart.before.add', ['cartItem' => null]);
 
             CartFacade::setCart($cart);
 
+            $bundleOptions = $this->normalizeJsonFieldToArray($data->bundleOptions, 'bundleOptions');
+            $bundleOptionQty = $this->normalizeJsonFieldToArray($data->bundleOptionQty, 'bundleOptionQty');
+            $booking = $this->normalizeJsonFieldToArray($data->booking, 'booking');
+
             $cartData = [
                 'quantity'   => $data->quantity,
                 'product_id' => $product->id,
+                'is_buy_now' => $data->isBuyNow ?? 0,
                 ...(is_array($data->options) ? $data->options : []),
+                ...(is_array($bundleOptions) ? ['bundle_options' => $bundleOptions] : []),
+                ...(is_array($bundleOptionQty) ? ['bundle_option_qty' => $bundleOptionQty] : []),
+                ...(isset($data->selectedConfigurableOption) ? ['selected_configurable_option' => $data->selectedConfigurableOption] : []),
+                ...(is_array($data->superAttribute) ? ['super_attribute' => $data->superAttribute] : []),
+                ...(is_array($groupedQty) ? ['qty' => $groupedQty] : []),
+                ...(is_array($data->links) ? ['links' => $data->links] : []),
+                ...(is_array($data->customizableOptions) ? ['customizable_options' => $data->customizableOptions] : []),
+                ...(is_array($data->additional) ? $data->additional : []),
             ];
+
+            if (is_array($booking)) {
+                $note = null;
+
+                if (is_string($data->specialNote) && trim($data->specialNote) !== '') {
+                    $note = $data->specialNote;
+                } elseif (is_string($data->bookingNote) && trim($data->bookingNote) !== '') {
+                    $note = $data->bookingNote;
+                }
+
+                if ($note !== null) {
+                    $booking['note'] = $note;
+                }
+
+                if ($product->type === 'booking') {
+                    $booking = $this->normalizeBookingForCart($booking, (int) $product->id);
+                }
+
+                $cartData['booking'] = $booking;
+            }
 
             CartFacade::addProduct($product, $cartData);
 
             CartFacade::collectTotals();
 
-            Event::dispatch('cart.after.add', ['cart' => CartFacade::getCart()]);
+            $updatedCart  = CartFacade::getCart();
 
-            $updatedCart = CartFacade::getCart();
+            Event::dispatch('cart.after.add', ['cart' => $updatedCart]);
         } catch (\Exception $e) {
             throw new OperationFailedException($e->getMessage(), 0, $e);
+        }
+
+        if (! $updatedCart) {
+            throw new OperationFailedException(__('bagistoapi::app.graphql.cart.add-product-failed'));
         }
 
         $responseData = CartData::fromModel($updatedCart);
@@ -371,7 +521,197 @@ class CartTokenProcessor implements ProcessorInterface
 
         $responseData->message = __('bagistoapi::app.graphql.cart.product-added-successfully');
 
+        // Add redirect URI for buy now
+        if ($redirectUri) {
+            $responseData->redirectUri = $redirectUri;
+        }
+
         return (array) $responseData;
+    }
+
+    /**
+     * Accept both array inputs (REST) and JSON-string inputs (GraphQL-friendly) and normalize to array.
+     */
+    private function normalizeJsonFieldToArray(mixed $value, string $fieldName): ?array
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (! is_string($value)) {
+            throw new InvalidInputException(sprintf('Invalid "%s" value. Expected JSON string or array.', $fieldName));
+        }
+
+        try {
+            $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new InvalidInputException(sprintf('Invalid "%s" JSON string.', $fieldName));
+        }
+
+        if (! is_array($decoded)) {
+            throw new InvalidInputException(sprintf('Invalid "%s" JSON string. Expected an object/array.', $fieldName));
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Normalize booking payload so clients can send user-friendly slot strings like "10:00 AM - 11:00 AM".
+     */
+    private function normalizeBookingForCart(array $booking, int $productId): array
+    {
+        if (($booking['type'] ?? null) === 'event') {
+            $this->validateEventBookingPayload($booking);
+
+            return $booking;
+        }
+
+        if (($booking['type'] ?? null) === 'table') {
+            $note = $booking['note'] ?? null;
+
+            if (! is_string($note) || trim($note) === '') {
+                throw new InvalidInputException('booking.note is required for table booking.');
+            }
+        }
+
+        if (! isset($booking['slot']) || ! is_string($booking['slot'])) {
+            return $booking;
+        }
+
+        if (! $this->looksLikeFormattedTimeRange($booking['slot'])) {
+            return $booking;
+        }
+
+        $date = $booking['date'] ?? null;
+
+        if (! is_string($date) || $date === '') {
+            throw new InvalidInputException('booking.date is required when booking.slot is a formatted time range.');
+        }
+
+        $timestamps = (new BookingSlotParser)->parse($date, $booking['slot'], $this->getChannelTimezone());
+
+        if (
+            ($booking['type'] ?? null) === 'rental'
+            || ($booking['renting_type'] ?? null) === 'hourly'
+        ) {
+            $booking['renting_type'] ??= 'hourly';
+            $booking['slot'] = $timestamps;
+        } else {
+            $bookingType = $booking['type'] ?? null;
+            $duration = $this->getBookingDurationMinutes($productId, is_string($bookingType) ? $bookingType : null);
+
+            if ($duration) {
+                $timestamps['to'] = $timestamps['from'] + ($duration * 60);
+            }
+
+            $booking['slot'] = $timestamps['from'].'-'.$timestamps['to'];
+
+            $this->validateFormattedSlotExists($productId, $bookingType, $date, $booking['slot']);
+        }
+
+        return $booking;
+    }
+
+    private function validateEventBookingPayload(array $booking): void
+    {
+        $qty = $booking['qty'] ?? null;
+
+        if (! is_array($qty) || empty($qty)) {
+            throw new InvalidInputException('booking.qty is required for event booking.');
+        }
+
+        $hasAtLeastOne = false;
+
+        foreach ($qty as $ticketId => $count) {
+            if ($count === null || $count === '') {
+                continue;
+            }
+
+            if (! is_numeric($count) || (int) $count < 0) {
+                throw new InvalidInputException('Event ticket quantity must be a non-negative number.');
+            }
+
+            if ((int) $count > 0) {
+                $hasAtLeastOne = true;
+            }
+        }
+
+        if (! $hasAtLeastOne) {
+            throw new InvalidInputException('Select at least one ticket quantity for event booking.');
+        }
+    }
+
+    private function getChannelTimezone(): ?string
+    {
+        $channel = core()->getCurrentChannel();
+
+        return $channel?->timezone ?: config('app.timezone');
+    }
+
+    private function getBookingDurationMinutes(int $productId, ?string $bookingType): ?int
+    {
+        if (! $bookingType || ! in_array($bookingType, ['appointment', 'default', 'table'], true)) {
+            return null;
+        }
+
+        $bookingProduct = \Webkul\BookingProduct\Models\BookingProduct::query()
+            ->where('product_id', $productId)
+            ->first();
+
+        return match ($bookingType) {
+            'appointment' => (int) ($bookingProduct?->appointment_slot?->duration ?? 0),
+            'default'     => (int) ($bookingProduct?->default_slot?->duration ?? 0),
+            'table'       => (int) ($bookingProduct?->table_slot?->duration ?? 0),
+            default       => null,
+        } ?: null;
+    }
+
+    private function validateFormattedSlotExists(int $productId, mixed $bookingType, string $date, string $slot): void
+    {
+        if (! is_string($bookingType) || ! in_array($bookingType, ['appointment', 'default', 'table'], true)) {
+            return;
+        }
+
+        $bookingProduct = \Webkul\BookingProduct\Models\BookingProduct::query()
+            ->where('product_id', $productId)
+            ->first();
+
+        if (! $bookingProduct) {
+            return;
+        }
+
+        $bookingHelper = app(\Webkul\BookingProduct\Helpers\Booking::class);
+
+        $typeHelper = app($bookingHelper->getTypeHelper($bookingType));
+
+        $slots = $typeHelper->getSlotsByDate($bookingProduct, $date);
+
+        $exists = collect($slots)->contains(function ($candidate) use ($slot) {
+            return ($candidate['timestamp'] ?? null) === $slot;
+        });
+
+        if (! $exists) {
+            throw new InvalidInputException('Selected slot is not available for the given date.');
+        }
+    }
+
+    private function looksLikeFormattedTimeRange(string $value): bool
+    {
+        $slot = trim($value);
+
+        if ($slot === '') {
+            return false;
+        }
+
+        $hasSeparator = preg_match('/\\s*[-–—]\\s*/u', $slot) === 1;
+        $hasAmPm = preg_match('/\\b(am|pm)\\b/i', $slot) === 1;
+        $hasColon = str_contains($slot, ':');
+
+        return $hasSeparator && ($hasColon || $hasAmPm);
     }
 
     /**
@@ -664,10 +1004,15 @@ class CartTokenProcessor implements ProcessorInterface
                 'is_active'  => 1,
             ]);
 
-            $this->guestCartTokensRepository->create([
+            $guestCartData = [
                 'cart_id' => $cart->id,
                 'token'   => $sessionToken,
-            ]);
+            ];
+
+            // Note: device_token is NOT saved for guest users anymore
+            // Only logged-in customers can receive push notifications
+
+            $this->guestCartTokensRepository->create($guestCartData);
 
             $cartData = CartData::fromModel($cart);
             $cartData->sessionToken = $sessionToken;

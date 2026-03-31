@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Storage;
 use Webkul\Customer\Models\Customer;
+use Webkul\BagistoApi\Dto\CustomerProfileOutput;
 use Webkul\BagistoApi\Exception\AuthenticationException;
 use Webkul\BagistoApi\Exception\InvalidInputException;
+use Webkul\BagistoApi\Helper\CustomerProfileHelper;
+use Webkul\BagistoApi\Models\CustomerProfile as CustomerProfileModel;
 use Webkul\BagistoApi\Validators\CustomerValidator;
 
 class CustomerProfileProcessor implements ProcessorInterface
@@ -20,12 +23,26 @@ class CustomerProfileProcessor implements ProcessorInterface
         protected CustomerValidator $validator
     ) {}
 
-    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ?array
+    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
     {
+        // For GraphQL mutations, always prefer context args input as it's the source of truth
+        // The denormalized object may not have all fields properly populated
+        if (isset($context['args']['input']) && is_array($context['args']['input'])) {
+            $inputData = $context['args']['input'];
+            
+            // Merge with existing data, preferring args values
+            if (is_object($data)) {
+                $dataArray = (array)$data;
+                $data = (object)array_merge($dataArray, $inputData);
+            } else {
+                $data = (object)$inputData;
+            }
+        }
+
         $request = Request::instance() ?? ($context['request'] ?? null);
 
         if (! $request) {
-            throw new AuthenticationException(__('graphql::app.graphql.auth.request-not-found'));
+            throw new AuthenticationException(__('bagistoapi::app.graphql.auth.request-not-found'));
         }
 
         $token = null;
@@ -37,13 +54,13 @@ class CustomerProfileProcessor implements ProcessorInterface
         }
 
         if (! $token) {
-            throw new AuthenticationException(__('graphql::app.graphql.auth.token-required'));
+            throw new AuthenticationException(__('bagistoapi::app.graphql.auth.token-required'));
         }
 
         $authenticatedCustomer = $this->getCustomerFromToken($token);
 
         if (! $authenticatedCustomer) {
-            throw new AuthenticationException(__('graphql::app.graphql.auth.invalid-or-expired-token'));
+            throw new AuthenticationException(__('bagistoapi::app.graphql.auth.invalid-or-expired-token'));
         }
 
         $resourceClass = $operation->getClass();
@@ -57,45 +74,27 @@ class CustomerProfileProcessor implements ProcessorInterface
             return $this->mapCustomerToProfile($authenticatedCustomer);
         }
 
-        throw new \InvalidArgumentException(__('graphql::app.graphql.auth.unknown-resource'));
+        throw new \InvalidArgumentException(__('bagistoapi::app.graphql.auth.unknown-resource'));
     }
 
     /**
-     * Map customer data to profile array
+     * Map customer model to DTO object
      */
-    private function mapCustomerToProfile(Customer $authenticatedCustomer): array
+    private function mapCustomerToProfile(Customer $authenticatedCustomer): CustomerProfileModel
     {
-        $imageUrl = null;
-        if ($authenticatedCustomer->image) {
-            $imageUrl = Storage::url($authenticatedCustomer->image);
-        }
-
-        return [
-            'id'                     => (string) $authenticatedCustomer->id,
-            'firstName'              => $authenticatedCustomer->first_name,
-            'lastName'               => $authenticatedCustomer->last_name,
-            'email'                  => $authenticatedCustomer->email,
-            'phone'                  => $authenticatedCustomer->phone,
-            'gender'                 => $authenticatedCustomer->gender,
-            'dateOfBirth'            => $authenticatedCustomer->date_of_birth,
-            'status'                 => $authenticatedCustomer->status,
-            'subscribedToNewsLetter' => $authenticatedCustomer->subscribed_to_news_letter,
-            'isVerified'             => (string) $authenticatedCustomer->is_verified,
-            'isSuspended'            => (string) $authenticatedCustomer->is_suspended,
-            'image'                  => $imageUrl,
-        ];
+        return CustomerProfileHelper::mapCustomerToProfile($authenticatedCustomer);
     }
 
     /**
      * Handle customer profile update.
      */
-    private function handleUpdate(mixed $data, Customer $authenticatedCustomer): array
+    private function handleUpdate(mixed $data, Customer $authenticatedCustomer): CustomerProfileOutput
     {
         $updateData = [];
 
         if (is_object($data) && property_exists($data, 'id') && $data->id) {
             if ((int) $data->id !== (int) $authenticatedCustomer->id) {
-                throw new AuthenticationException(__('graphql::app.graphql.auth.cannot-update-other-profile'));
+                throw new AuthenticationException(__('bagistoapi::app.graphql.auth.cannot-update-other-profile'));
             }
         }
 
@@ -112,11 +111,14 @@ class CustomerProfileProcessor implements ProcessorInterface
         }
 
         if (is_object($data) && property_exists($data, 'phone') && ! empty($data->phone)) {
+            // Validate phone - no special characters allowed
+            $this->validatePhone($data->phone);
             $updateData['phone'] = $data->phone;
         }
 
         if (is_object($data) && property_exists($data, 'gender') && ! empty($data->gender)) {
-            $updateData['gender'] = $data->gender;
+            // Validate and normalize gender
+            $updateData['gender'] = $this->validator->validateGender($data->gender);
         }
 
         if (is_object($data) && property_exists($data, 'dateOfBirth') && ! empty($data->dateOfBirth)) {
@@ -126,7 +128,7 @@ class CustomerProfileProcessor implements ProcessorInterface
         if (is_object($data) && property_exists($data, 'password') && ! empty($data->password)) {
             if (is_object($data) && property_exists($data, 'confirmPassword')) {
                 if ($data->password !== $data->confirmPassword) {
-                    throw new \InvalidArgumentException(__('graphql::app.graphql.customer.password-mismatch'));
+                    throw new \InvalidArgumentException(__('bagistoapi::app.graphql.customer.password-mismatch'));
                 }
             }
             if (! Hash::isHashed($data->password)) {
@@ -136,6 +138,18 @@ class CustomerProfileProcessor implements ProcessorInterface
 
         if (is_object($data) && property_exists($data, 'subscribedToNewsLetter')) {
             $updateData['subscribed_to_news_letter'] = $data->subscribedToNewsLetter;
+        }
+
+        if (is_object($data) && property_exists($data, 'status') && ! empty($data->status)) {
+            $updateData['status'] = $data->status;
+        }
+
+        if (is_object($data) && property_exists($data, 'isVerified') && ! empty($data->isVerified)) {
+            $updateData['is_verified'] = $data->isVerified;
+        }
+
+        if (is_object($data) && property_exists($data, 'isSuspended') && ! empty($data->isSuspended)) {
+            $updateData['is_suspended'] = $data->isSuspended;
         }
 
         Event::dispatch('customer.update.before');
@@ -157,20 +171,12 @@ class CustomerProfileProcessor implements ProcessorInterface
 
         Event::dispatch('customer.update.after', $authenticatedCustomer);
 
-        return [
-            'id'                     => (string) $authenticatedCustomer->id,
-            'firstName'              => $authenticatedCustomer->first_name,
-            'lastName'               => $authenticatedCustomer->last_name,
-            'email'                  => $authenticatedCustomer->email,
-            'phone'                  => $authenticatedCustomer->phone,
-            'gender'                 => $authenticatedCustomer->gender,
-            'dateOfBirth'            => $authenticatedCustomer->date_of_birth,
-            'status'                 => $authenticatedCustomer->status,
-            'subscribedToNewsLetter' => $authenticatedCustomer->subscribed_to_news_letter,
-            'isVerified'             => (string) $authenticatedCustomer->is_verified,
-            'isSuspended'            => (string) $authenticatedCustomer->is_suspended,
-            'image'                  => $authenticatedCustomer->image ? Storage::url($authenticatedCustomer->image) : null,
-        ];
+        $output = CustomerProfileHelper::mapCustomerToProfileOutput($authenticatedCustomer);
+        $output->success = true;
+        $output->message = __('bagistoapi::app.graphql.customer-profile.profile-updated');
+
+        return $output;
+
     }
 
     /**
@@ -255,11 +261,11 @@ class CustomerProfileProcessor implements ProcessorInterface
                 $decodedData = base64_decode($base64Data, true);
 
                 if ($decodedData === false) {
-                    throw new InvalidInputException(__('graphql::app.graphql.upload.invalid-base64'));
+                    throw new InvalidInputException(__('bagistoapi::app.graphql.upload.invalid-base64'));
                 }
 
                 if (strlen($decodedData) > 5 * 1024 * 1024) {
-                    throw new InvalidInputException(__('graphql::app.graphql.upload.size-exceeds-limit'));
+                    throw new InvalidInputException(__('bagistoapi::app.graphql.upload.size-exceeds-limit'));
                 }
 
                 $directory = 'customer/'.$customer->id;
@@ -277,10 +283,30 @@ class CustomerProfileProcessor implements ProcessorInterface
 
                 Event::dispatch('customer.image.upload.after', $customer);
             } else {
-                throw new InvalidInputException(__('graphql::app.graphql.upload.invalid-format'));
+                throw new InvalidInputException(__('bagistoapi::app.graphql.upload.invalid-format'));
             }
         } catch (\Exception $e) {
-            throw new InvalidInputException(__('graphql::app.graphql.upload.failed'));
+            throw new InvalidInputException(__('bagistoapi::app.graphql.upload.failed'));
+        }
+    }
+
+    /**
+     * Validate phone number - only digits allowed
+     *
+     * @throws InvalidInputException
+     */
+    private function validatePhone(?string $phone): void
+    {
+        if ($phone === null || $phone === '') {
+            return;
+        }
+
+        // Phone should only contain digits - remove all non-digit characters
+        $cleanedPhone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // If the cleaned phone is different from original, it means special characters were present
+        if ($cleanedPhone !== $phone) {
+            throw new InvalidInputException(__('bagistoapi::app.graphql.customer.phone-special-chars-not-allowed'));
         }
     }
 }

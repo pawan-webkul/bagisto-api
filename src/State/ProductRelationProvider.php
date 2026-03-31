@@ -36,6 +36,7 @@ class ProductRelationProvider implements ProviderInterface
             'relatedProducts' => 'related_products',
             'superAttributes' => 'super_attributes',
             'reviews'         => 'reviews',
+            'bookingProducts' => 'booking_products',
         ];
 
         if (! isset($relationMethods[$fieldName])) {
@@ -45,6 +46,11 @@ class ProductRelationProvider implements ProviderInterface
         $relationMethod = $relationMethods[$fieldName];
 
         $relationBuilder = $source->{$relationMethod}();
+
+        /** Only return approved reviews on the storefront */
+        if ($relationMethod === 'reviews') {
+            $relationBuilder->where('status', 'approved');
+        }
 
         $first = isset($args['first']) ? (int) $args['first'] : null;
         $last = isset($args['last']) ? (int) $args['last'] : null;

@@ -4,15 +4,17 @@ namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Webkul\BagistoApi\Dto\CreateProductReviewInput;
 use Webkul\BagistoApi\Dto\UpdateProductReviewInput;
+use Webkul\BagistoApi\Exception\AuthorizationException;
 use Webkul\BagistoApi\Exception\InvalidInputException;
 use Webkul\BagistoApi\Exception\ResourceNotFoundException;
 use Webkul\BagistoApi\Models\Product;
 use Webkul\BagistoApi\Models\ProductReview;
-use Webkul\GraphQL\Dto\ProductReviewOutput;
-use Webkul\GraphQL\Models\ProductReviewAttachment;
+use Webkul\BagistoApi\Dto\ProductReviewOutput;
+use Webkul\BagistoApi\Models\ProductReviewAttachment;
 
 /**
  * ProductReviewProcessor - Handles create/update operations for product reviews
@@ -57,6 +59,18 @@ class ProductReviewProcessor implements ProcessorInterface
      */
     private function handleCreate(CreateProductReviewInput $data)
     {
+        /** Check if customer reviews are enabled globally */
+        if (! core()->getConfigData('catalog.products.review.customer_review')) {
+            throw new AuthorizationException(__('bagistoapi::app.graphql.product-review.review-disabled'));
+        }
+
+        $customer = Auth::guard('sanctum')->user();
+
+        /** Check if guest reviews are allowed when user is not authenticated */
+        if (! $customer && ! core()->getConfigData('catalog.products.review.guest_review')) {
+            throw new AuthorizationException(__('bagistoapi::app.graphql.product-review.guest-review-disabled'));
+        }
+
         $review = new ProductReview;
 
         $review->setAttribute('product_id', $data->productId);
@@ -64,7 +78,11 @@ class ProductReviewProcessor implements ProcessorInterface
         $review->setAttribute('comment', $data->comment);
         $review->setAttribute('rating', $data->rating);
         $review->setAttribute('name', $data->name);
-        $review->setAttribute('status', $data->status ?? 0);
+        $review->setAttribute('status', $data->status ?? 'pending');
+
+        if ($customer) {
+            $review->setAttribute('customer_id', $customer->id);
+        }
 
         $this->validateReview($review);
 
@@ -80,13 +98,7 @@ class ProductReviewProcessor implements ProcessorInterface
             $review->setAttribute('attachments', json_encode($attachments));
         }
 
-        $output = new \stdClass;
-
-        foreach ($review->getAttributes() as $key => $value) {
-            $output->$key = $value;
-        }
-
-        return $output;
+        return $this->mapToOutput($review);
     }
 
     /**
@@ -136,14 +148,7 @@ class ProductReviewProcessor implements ProcessorInterface
             $review->setAttribute('attachments', json_encode($attachments));
         }
 
-        $output = new \stdClass;
-
-        foreach ($review->getAttributes() as $key => $value) {
-            $output->$key = $value;
-        }
-
-        return $output;
-
+	    return $this->mapToOutput($review);
     }
 
     /**
@@ -191,23 +196,43 @@ class ProductReviewProcessor implements ProcessorInterface
     /**
      * Map ProductReview model to ProductReviewOutput DTO for GraphQL response
      */
-    private function mapToOutput(ProductReview $review): ProductReviewOutput
+    private function mapToOutput(ProductReview $review): \stdClass
     {
-        $output = new ProductReviewOutput;
-        $output->id = (int) $review->getAttribute('id');
-        $output->productId = (int) $review->getAttribute('product_id');
-        $output->title = (string) $review->getAttribute('title');
-        $output->comment = (string) $review->getAttribute('comment');
-        $output->rating = (int) $review->getAttribute('rating');
-        $output->name = (string) $review->getAttribute('name');
-        $output->status = (int) $review->getAttribute('status');
+        $output = new \stdClass;
 
-        $createdAt = $review->getAttribute('created_at');
-        $output->createdAt = $createdAt ? ($createdAt instanceof \DateTime ? $createdAt->format('Y-m-d H:i:s') : (string) $createdAt) : null;
+        foreach ($review->getAttributes() as $key => $value) {
+            switch ($key) {
+                case 'id':
+                case 'product_id':
+                case 'rating':
+                    $output->$key = (int)$value;
+                    
+                    break;
 
-        $updatedAt = $review->getAttribute('updated_at');
-        $output->updatedAt = $updatedAt ? ($updatedAt instanceof \DateTime ? $updatedAt->format('Y-m-d H:i:s') : (string) $updatedAt) : null;
+                case 'title':
+                case 'comment':
+                case 'name':
+                    $output->$key = (string)$value;
+                    break;
 
+                case 'status':
+                    $output->$key = $value === 'approved' ? 1 : 0;
+                    break;
+
+                case 'created_at':
+                case 'updated_at':
+                    if ($value instanceof \DateTime) {
+                        $output->$key = $value->format('Y-m-d H:i:s');
+                    } else {
+                        $output->$key = $value; 
+                    }
+                    break;
+                default:
+                    $output->$key = $value;
+                    break;
+            }
+        }
+ 
         return $output;
     }
 

@@ -9,6 +9,7 @@ use ApiPlatform\Metadata\GraphQl\Query;
 use ApiPlatform\Metadata\GraphQl\QueryCollection;
 use Webkul\BagistoApi\Dto\CreateProductReviewInput;
 use Webkul\BagistoApi\Dto\UpdateProductReviewInput;
+use Webkul\BagistoApi\Resolver\BaseQueryItemResolver;
 use Webkul\BagistoApi\State\ProductReviewProcessor;
 use Webkul\BagistoApi\State\ProductReviewProvider;
 use Webkul\BagistoApi\State\ProductReviewUpdateProvider;
@@ -49,7 +50,7 @@ use Webkul\BagistoApi\State\ProductReviewUpdateProvider;
             provider: ProductReviewProvider::class,
             args: [
                 'product_id' => ['type' => 'Int', 'description' => 'Filter reviews by product ID'],
-                'status'     => ['type' => 'Int', 'description' => 'Filter reviews by status (0=pending, 1=approved, 2=rejected)'],
+                'status'     => ['type' => 'String', 'description' => 'Filter reviews by status (pending, approved, rejected)'],
                 'rating'     => ['type' => 'Int', 'description' => 'Filter reviews by rating (1-5 stars)'],
                 'first'      => ['type' => 'Int', 'description' => 'Number of items to return from the start'],
                 'last'       => ['type' => 'Int', 'description' => 'Number of items to return from the end'],
@@ -57,7 +58,7 @@ use Webkul\BagistoApi\State\ProductReviewUpdateProvider;
                 'before'     => ['type' => 'String', 'description' => 'Cursor to start pagination before'],
             ]
         ),
-        new Query,
+        new Query(resolver: BaseQueryItemResolver::class),
         new Mutation(
             name: 'create',
             input: CreateProductReviewInput::class,
@@ -72,7 +73,10 @@ use Webkul\BagistoApi\State\ProductReviewUpdateProvider;
             processor: ProductReviewProcessor::class,
             description: 'Update an existing product review'
         ),
-        new DeleteMutation(name: 'delete'),
+        new DeleteMutation(
+            name: 'delete',
+            description: 'Delete a product review'
+        ),
     ]
 )]
 class ProductReview extends \Webkul\Product\Models\ProductReview
@@ -95,7 +99,7 @@ class ProductReview extends \Webkul\Product\Models\ProductReview
         'comment'     => 'string',
         'name'        => 'string',
         'rating'      => 'int',
-        'status'      => 'int',
+        'status'      => 'string',
         'created_at'  => 'datetime',
         'updated_at'  => 'datetime',
     ];
@@ -114,6 +118,11 @@ class ProductReview extends \Webkul\Product\Models\ProductReview
         return parent::__get($key);
     }
 
+    public function getId()
+    {
+        return $this->getAttribute('id');
+    }
+    
     /**
      * Override __isset to ensure isset() works correctly with __get()
      * This is critical for Symfony PropertyAccessor which checks isset() before reading.

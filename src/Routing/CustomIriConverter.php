@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 use ApiPlatform\Metadata\UrlGeneratorInterface;
 use Illuminate\Database\Eloquent\Model;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 class CustomIriConverter implements IriConverterInterface
 {
@@ -45,7 +46,9 @@ class CustomIriConverter implements IriConverterInterface
 
     public function getResourceFromIri(string $iri, array $context = [], ?Operation $operation = null): object
     {
-        $resourceClass = $operation?->getClass();
+        $realOperation = $operation ?? ($context['operation'] ?? null);
+        $resourceClass = $realOperation?->getClass();
+
         if ($resourceClass) {
             $className = class_basename($resourceClass);
             if (in_array($className, ['CartToken', 'AddProductInCart'])) {
@@ -54,9 +57,39 @@ class CustomIriConverter implements IriConverterInterface
         }
 
         try {
-            return $this->decorated->getResourceFromIri($iri, $context, $operation);
+            $resolvedIri = $this->normalizeIri($iri, $resourceClass);
+
+            return $this->decorated->getResourceFromIri($resolvedIri, $context, $realOperation);
         } catch (\Throwable $e) {
+            if ($resourceClass && class_basename($resourceClass) === 'CustomerOrder' && ! $this->isNumericOrIri($iri)) {
+                throw new BadRequestHttpException(
+                    __('bagistoapi::app.graphql.customer-order.invalid-id-format')
+                );
+            }
+
+            if ($realOperation && $resourceClass = $realOperation->getClass()) {
+                return app($resourceClass);
+            }
+
             return new \stdClass;
         }
+    }
+
+    private function normalizeIri(string $iri, ?string $resourceClass): string
+    {
+        if (! $resourceClass || ! ctype_digit($iri)) {
+            return $iri;
+        }
+
+        if (class_basename($resourceClass) !== 'CustomerOrder') {
+            return $iri;
+        }
+
+        return '/api/shop/customer-orders/'.$iri;
+    }
+
+    private function isNumericOrIri(string $value): bool
+    {
+        return ctype_digit($value) || str_contains($value, '/');
     }
 }

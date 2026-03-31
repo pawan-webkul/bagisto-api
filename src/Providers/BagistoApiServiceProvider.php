@@ -5,6 +5,7 @@ namespace Webkul\BagistoApi\Providers;
 use ApiPlatform\GraphQl\Resolver\Factory\ResolverFactoryInterface;
 use ApiPlatform\GraphQl\Resolver\QueryCollectionResolverInterface;
 use ApiPlatform\GraphQl\Resolver\QueryItemResolverInterface;
+use ApiPlatform\GraphQl\Type\Definition\IterableType;
 use ApiPlatform\Laravel\Eloquent\State\PersistProcessor;
 use ApiPlatform\Metadata\IdentifiersExtractorInterface;
 use ApiPlatform\Metadata\IriConverterInterface;
@@ -42,8 +43,10 @@ use Webkul\BagistoApi\State\BundleOptionProductsProvider;
 use Webkul\BagistoApi\State\CartTokenMutationProvider;
 use Webkul\BagistoApi\State\CartTokenProcessor;
 use Webkul\BagistoApi\State\CategoryTreeProvider;
+use Webkul\BagistoApi\State\ChannelProvider;
 use Webkul\BagistoApi\State\CheckoutAddressProvider;
 use Webkul\BagistoApi\State\CheckoutProcessor;
+use Webkul\BagistoApi\State\CompareItemProcessor;
 use Webkul\BagistoApi\State\CountryStateCollectionProvider;
 use Webkul\BagistoApi\State\CountryStateQueryProvider;
 use Webkul\BagistoApi\State\CustomerAddressProvider;
@@ -62,6 +65,7 @@ use Webkul\BagistoApi\State\LoginProcessor;
 use Webkul\BagistoApi\State\LogoutProcessor;
 use Webkul\BagistoApi\State\PaymentMethodsProvider;
 use Webkul\BagistoApi\State\Processor\NewsletterSubscriptionProcessor;
+use Webkul\BagistoApi\State\Processor\ContactUsProcessor;
 use Webkul\BagistoApi\State\ProductBagistoApiProvider;
 use Webkul\BagistoApi\State\ProductGraphQLProvider;
 use Webkul\BagistoApi\State\ProductCustomerGroupPriceProcessor;
@@ -72,6 +76,22 @@ use Webkul\BagistoApi\State\ProductReviewProcessor;
 use Webkul\BagistoApi\State\ProductReviewProvider;
 use Webkul\BagistoApi\State\ShippingRatesProvider;
 use Webkul\BagistoApi\State\VerifyTokenProcessor;
+use Webkul\BagistoApi\State\CompareItemProvider;
+use Webkul\BagistoApi\State\CustomerDownloadableProductProvider;
+use Webkul\BagistoApi\State\CustomerInvoiceProvider;
+use Webkul\BagistoApi\State\CustomerOrderProvider;
+use Webkul\BagistoApi\State\CustomerOrderShipmentProvider;
+use Webkul\BagistoApi\State\CustomerReviewProvider;
+use Webkul\BagistoApi\State\WishlistProcessor;
+use Webkul\BagistoApi\State\WishlistProvider;
+use Webkul\BagistoApi\State\MoveWishlistToCartProcessor;
+use Webkul\BagistoApi\State\DeleteAllWishlistsProcessor;
+use Webkul\BagistoApi\State\CancelOrderProcessor;
+use Webkul\BagistoApi\State\ReorderProcessor;
+use Webkul\BagistoApi\State\DeleteAllCompareItemsProcessor;
+use ApiPlatform\GraphQl\Serializer\SerializerContextBuilder as GraphQlSerializerContextBuilder;
+use Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use Webkul\BagistoApi\GraphQl\Serializer\FixedSerializerContextBuilder;
 
 class BagistoApiServiceProvider extends ServiceProvider
 {
@@ -80,6 +100,9 @@ class BagistoApiServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(IterableType::class);
+        $this->app->tag(IterableType::class, 'api_platform.graphql.type');
+
         $this->app->singleton(StorefrontKeyService::class, function ($app) {
             return new StorefrontKeyService;
         });
@@ -123,8 +146,16 @@ class BagistoApiServiceProvider extends ServiceProvider
         $this->app->tag(CartTokenProcessor::class, ProcessorInterface::class);
         $this->app->tag(CheckoutProcessor::class, ProcessorInterface::class);
         $this->app->tag(ProductReviewProcessor::class, ProcessorInterface::class);
+        $this->app->tag(CompareItemProcessor::class, ProcessorInterface::class);
         $this->app->tag(DownloadableProductProcessor::class, ProcessorInterface::class);
         $this->app->tag(NewsletterSubscriptionProcessor::class, ProcessorInterface::class);
+        $this->app->tag(WishlistProcessor::class, ProcessorInterface::class);
+        $this->app->tag(MoveWishlistToCartProcessor::class, ProcessorInterface::class);
+        $this->app->tag(DeleteAllWishlistsProcessor::class, ProcessorInterface::class);
+        $this->app->tag(DeleteAllCompareItemsProcessor::class, ProcessorInterface::class);
+        $this->app->tag(CancelOrderProcessor::class, ProcessorInterface::class);
+        $this->app->tag(ReorderProcessor::class, ProcessorInterface::class);
+        $this->app->tag(ContactUsProcessor::class, ProcessorInterface::class);
 
         $this->app->tag(TokenHeaderDenormalizer::class, 'serializer.normalizer');
 
@@ -174,6 +205,53 @@ class BagistoApiServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(CompareItemProcessor::class, function ($app) {
+            return new CompareItemProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(WishlistProcessor::class, function ($app) {
+            return new WishlistProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(MoveWishlistToCartProcessor::class, function ($app) {
+            return new MoveWishlistToCartProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(DeleteAllWishlistsProcessor::class, function ($app) {
+            return new DeleteAllWishlistsProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(DeleteAllCompareItemsProcessor::class, function ($app) {
+            return new DeleteAllCompareItemsProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(CancelOrderProcessor::class, function ($app) {
+            return new CancelOrderProcessor(
+                $app->make(PersistProcessor::class),
+                $app->make('Webkul\Sales\Repositories\OrderRepository')
+            );
+        });
+
+        $this->app->singleton(ReorderProcessor::class, function ($app) {
+            return new ReorderProcessor(
+                $app->make(PersistProcessor::class)
+            );
+        });
+
+        $this->app->singleton(LogoutProcessor::class, function ($app) {
+            return new LogoutProcessor();
+        });
+
         $this->app->tag(CheckoutAddressProvider::class, ProviderInterface::class);
         $this->app->tag(CustomerAddressProvider::class, ProviderInterface::class);
         $this->app->tag(GetCheckoutAddressCollectionProvider::class, ProviderInterface::class);
@@ -181,6 +259,7 @@ class BagistoApiServiceProvider extends ServiceProvider
         $this->app->tag(ShippingRatesProvider::class, ProviderInterface::class);
         $this->app->tag(AuthenticatedCustomerProvider::class, ProviderInterface::class);
         $this->app->tag(CartTokenMutationProvider::class, ProviderInterface::class);
+        $this->app->tag(ChannelProvider::class, ProviderInterface::class);
         $this->app->tag(DefaultChannelProvider::class, ProviderInterface::class);
         $this->app->tag(ProductBagistoApiProvider::class, ProviderInterface::class);
         $this->app->tag(ProductGraphQLProvider::class, ProviderInterface::class);
@@ -198,10 +277,59 @@ class BagistoApiServiceProvider extends ServiceProvider
         $this->app->tag(CountryStateCollectionProvider::class, ProviderInterface::class);
         $this->app->tag(CountryStateQueryProvider::class, ProviderInterface::class);
         $this->app->tag(CategoryTreeProvider::class, ProviderInterface::class);
+        $this->app->tag(WishlistProvider::class, ProviderInterface::class);
+        $this->app->tag(CompareItemProvider::class, ProviderInterface::class);
+        $this->app->tag(CustomerReviewProvider::class, ProviderInterface::class);
+        $this->app->tag(CustomerOrderProvider::class, ProviderInterface::class);
+        $this->app->tag(CustomerDownloadableProductProvider::class, ProviderInterface::class);
+        $this->app->tag(CustomerInvoiceProvider::class, ProviderInterface::class);
+        $this->app->tag(CustomerOrderShipmentProvider::class, ProviderInterface::class);
 
         $this->app->singleton(GetCheckoutAddressCollectionProvider::class, function ($app) {
             return new GetCheckoutAddressCollectionProvider(
                 $app->make('ApiPlatform\State\Pagination\Pagination')
+            );
+        });
+
+        $this->app->singleton(WishlistProvider::class, function ($app) {
+            return new WishlistProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CompareItemProvider::class, function ($app) {
+            return new CompareItemProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CustomerReviewProvider::class, function ($app) {
+            return new CustomerReviewProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CustomerOrderProvider::class, function ($app) {
+            return new CustomerOrderProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CustomerDownloadableProductProvider::class, function ($app) {
+            return new CustomerDownloadableProductProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CustomerInvoiceProvider::class, function ($app) {
+            return new CustomerInvoiceProvider(
+                $app->make(Pagination::class)
+            );
+        });
+
+        $this->app->singleton(CustomerOrderShipmentProvider::class, function ($app) {
+            return new CustomerOrderShipmentProvider(
+                $app->make(Pagination::class)
             );
         });
 
@@ -301,6 +429,13 @@ class BagistoApiServiceProvider extends ServiceProvider
                 $app->make(\ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface::class)
             );
         });
+
+        $this->app->extend(GraphQlSerializerContextBuilder::class, function ($builder, $app) {
+            return new FixedSerializerContextBuilder(
+                $builder,
+                $app->make(NameConverterInterface::class)
+            );
+        });
     }
 
     /**
@@ -322,7 +457,7 @@ class BagistoApiServiceProvider extends ServiceProvider
             ], 'bagistoapi-config');        
         }
 
-        $this->publishes([            
+        $this->publishes([
             __DIR__.'/../config/graphql-auth.php' => config_path('graphql-auth.php'),
             __DIR__.'/../config/storefront.php'   => config_path('storefront.php'),
         ], 'bagistoapi-config');
@@ -335,6 +470,7 @@ class BagistoApiServiceProvider extends ServiceProvider
             __DIR__.'/../Resources/assets' => public_path('themes/admin/default/assets'),
         ], 'bagistoapi-assets');
 
+        $this->runInstallationIfNeeded();
         $this->registerApiResources();
         $this->registerApiDocumentationRoutes();
         $this->registerMiddlewareAliases();
@@ -377,6 +513,11 @@ class BagistoApiServiceProvider extends ServiceProvider
 
         \Illuminate\Support\Facades\Route::get('/admin/graphiql', AdminGraphQLPlaygroundController::class)
             ->name('bagistoapi.admin-graphql-playground');
+
+        \Illuminate\Support\Facades\Route::get('/api/shop/customer-invoices/{id}/pdf', \Webkul\BagistoApi\Http\Controllers\InvoicePdfController::class)
+            ->where('id', '[0-9]+')
+            ->middleware(['Webkul\BagistoApi\Http\Middleware\VerifyStorefrontKey'])
+            ->name('bagistoapi.customer-invoice-pdf');
     }
 
     /**
@@ -389,11 +530,43 @@ class BagistoApiServiceProvider extends ServiceProvider
     }
 
     /**
+     * Run installation if needed.
+     */
+    protected function runInstallationIfNeeded(): void
+    {
+        if (file_exists(config_path('api-platform.php'))) {
+            return;
+        }
+
+        if (! $this->app->runningInConsole() || ! $this->isComposerOperation()) {
+            return;
+        }
+
+        try {
+            $this->app['artisan']->call('bagisto-api-platform:install', ['--quiet' => true]);
+        } catch (\Exception) {
+            // Installation can be run manually if needed
+        }
+    }
+
+    /**
+     * Determine if running via Composer.
+     */
+    protected function isComposerOperation(): bool
+    {
+        $composerMemory = getenv('COMPOSER_MEMORY_LIMIT');
+        $composerAuth = getenv('COMPOSER_AUTH');
+
+        return ! empty($composerMemory) || ! empty($composerAuth) || defined('COMPOSER_BINARY_PATH');
+    }
+
+    /**
      * Register middleware aliases.
      */
     protected function registerMiddlewareAliases(): void
     {
         $this->app['router']->aliasMiddleware('storefront.key', VerifyStorefrontKey::class);
+        $this->app['router']->aliasMiddleware('api.locale-channel', \Webkul\BagistoApi\Http\Middleware\SetLocaleChannel::class);
         $this->app['router']->aliasMiddleware('api.rate-limit', \Webkul\BagistoApi\Http\Middleware\RateLimitApi::class);
         $this->app['router']->aliasMiddleware('api.security-headers', \Webkul\BagistoApi\Http\Middleware\SecurityHeaders::class);
         $this->app['router']->aliasMiddleware('api.log-requests', \Webkul\BagistoApi\Http\Middleware\LogApiRequests::class);
@@ -416,6 +589,7 @@ class BagistoApiServiceProvider extends ServiceProvider
     {
         $this->commands([
             \Webkul\BagistoApi\Console\Commands\InstallApiPlatformCommand::class,
+            \Webkul\BagistoApi\Console\Commands\ClearApiPlatformCacheCommand::class,
             GenerateStorefrontKey::class,
             \Webkul\BagistoApi\Console\Commands\ApiKeyManagementCommand::class,
             \Webkul\BagistoApi\Console\Commands\ApiKeyMaintenanceCommand::class,

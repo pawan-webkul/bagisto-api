@@ -23,7 +23,7 @@ jobs:
           --health-retries=5
 
     env:
-      BASE_URL: http://127.0.0.1:8000
+      BAGISTO_URL: ${{ secrets.BAGISTO_URL }}
 
     steps:
       # -------------------------------
@@ -153,23 +153,17 @@ jobs:
              ls -la bagisto/packages/Webkul/BagistoApi/tests/e2e-pw || echo "No e2e-pw folder"
 
       # -------------------------------
-      # Install Playwright
+      # Install Playwright & Run Test
       # -------------------------------
       - name: Install Playwright
-        run: |
-             cd bagisto/packages/Webkul/BagistoApi/tests/e2e-pw
-             npm install
-             npx playwright install --with-deps chromium
-
-      # -------------------------------
-      # Run tests
-      # -------------------------------
-      - name: Run Playwright tests
         env:
           BASE_URL: ${{ env.BASE_URL }}
           STOREFRONT_ACCESS_KEY: ${{ env.STOREFRONT_ACCESS_KEY }}
         run: |
-          npx playwright test tests --reporter=list,html
+             cd bagisto/packages/Webkul/BagistoApi/tests/e2e-pw
+             npm install
+             npx playwright install --with-deps chromium
+             npx playwright test tests --reporter=list,html
 
       # -------------------------------
       # Upload report

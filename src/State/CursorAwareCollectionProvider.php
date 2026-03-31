@@ -3,6 +3,7 @@
 namespace Webkul\BagistoApi\State;
 
 use ApiPlatform\Laravel\Eloquent\Paginator;
+use ApiPlatform\Laravel\Eloquent\State\LinksHandler;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -20,6 +21,10 @@ use Illuminate\Pagination\LengthAwarePaginator;
  */
 class CursorAwareCollectionProvider implements ProviderInterface
 {
+    public function __construct(
+        private readonly LinksHandler $linksHandler,
+    ) {}
+
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
     {
         $resourceClass = $operation->getClass();
@@ -46,7 +51,11 @@ class CursorAwareCollectionProvider implements ProviderInterface
             $offset  = max(0, $cursor - $limit);
         }
 
-        $query = $model->newQuery();
+        $query = $this->linksHandler->handleLinks(
+            $model->newQuery(),
+            $uriVariables,
+            ['operation' => $operation, 'modelClass' => $operation->getClass()] + $context
+        );
 
         $filters = $context['filters'] ?? [];
 

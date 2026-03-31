@@ -941,6 +941,7 @@ class Product extends BaseProduct
 
             if (! empty($options)) {
                 $result[] = [
+                    'id'      => $attribute->id,
                     'code'    => $attribute->code,
                     'label'   => $attribute->admin_name,
                     'options' => $options,
@@ -1272,7 +1273,7 @@ class Product extends BaseProduct
 
     public function getPriceAttribute(): ?float
     {
-        return (float) core()->convertPrice(floatval($this->getSystemAttributeValue('price')));
+        return floatval($this->getSystemAttributeValue('price'));
     }
 
     #[ApiProperty(writable: true, readable: true)]
@@ -1288,7 +1289,7 @@ class Product extends BaseProduct
 
     public function getSpecialPriceAttribute(): ?float
     {
-        return (float) core()->convertPrice(floatval($this->getSystemAttributeValue('special_price')));
+        return floatval($this->getSystemAttributeValue('special_price'));
     }
 
     #[ApiProperty(writable: true, readable: true)]
@@ -1776,7 +1777,13 @@ class Product extends BaseProduct
                 }
             }
         }
-        
+
+        // Fallback to the channel's default locale when the requested locale has no translation
+        $defaultLocale = core()->getCurrentChannel()->default_locale?->code;
+        if ($defaultLocale && ! in_array($defaultLocale, $localeVariants)) {
+            $localeVariants[] = $defaultLocale;
+        }
+
         $localeVariants[] = null;
         
         $channelVariants = [$currentChannel, null];
@@ -1948,11 +1955,11 @@ class Product extends BaseProduct
                 ->first();
 
             if ($priceIndex) {
-                return (float) core()->convertPrice(floatval($priceIndex->min_price));
+                return floatval($priceIndex->min_price);
             }
 
             // Fallback to base price
-            return (float) core()->convertPrice(floatval($this->price ?? 0));
+            return floatval($this->price ?? 0);
         } catch (\Exception $e) {
             // If any error occurs, return base price
             return floatval($this->price ?? 0);
@@ -1987,7 +1994,7 @@ class Product extends BaseProduct
             $customerGroup = resolve('Webkul\Customer\Repositories\CustomerRepository')->getCurrentGroup();
 
             if (! $currentChannel || ! $customerGroup) {
-                return (float) core()->convertPrice(floatval($this->price ?? 0));
+                return floatval($this->price ?? 0);
             }
 
             // Get price index for current channel and customer group
@@ -1997,11 +2004,11 @@ class Product extends BaseProduct
                 ->first();
 
             if ($priceIndex) {
-                return (float) core()->convertPrice(floatval($priceIndex->max_price));
+                return floatval($priceIndex->max_price);
             }
 
             // Fallback to base price
-            return (float) core()->convertPrice(floatval($this->price ?? 0));
+            return floatval($this->price ?? 0);
         } catch (\Exception $e) {
             // If any error occurs, return base price
             return floatval($this->price ?? 0);
@@ -2036,7 +2043,7 @@ class Product extends BaseProduct
             $customerGroup = resolve('Webkul\Customer\Repositories\CustomerRepository')->getCurrentGroup();
 
             if (! $currentChannel || ! $customerGroup) {
-                return (float) core()->convertPrice(floatval($this->price ?? 0));
+                return floatval($this->price ?? 0);
             }
 
             // Get price index for current channel and customer group
@@ -2046,11 +2053,11 @@ class Product extends BaseProduct
                 ->first();
 
             if ($priceIndex) {
-                return (float) core()->convertPrice(floatval($priceIndex->regular_min_price));
+                return floatval($priceIndex->regular_min_price);
             }
 
             // Fallback to base price
-            return (float) core()->convertPrice(floatval($this->price ?? 0));
+            return floatval($this->price ?? 0);
         } catch (\Exception $e) {
             // If any error occurs, return base price
             return floatval($this->price ?? 0);
@@ -2085,7 +2092,7 @@ class Product extends BaseProduct
             $customerGroup = resolve('Webkul\Customer\Repositories\CustomerRepository')->getCurrentGroup();
 
             if (! $currentChannel || ! $customerGroup) {
-                return (float) core()->convertPrice(floatval($this->price ?? 0));
+                return floatval($this->price ?? 0);
             }
 
             // Get price index for current channel and customer group
@@ -2095,11 +2102,11 @@ class Product extends BaseProduct
                 ->first();
 
             if ($priceIndex) {
-                return (float) core()->convertPrice(floatval($priceIndex->regular_max_price));
+                return floatval($priceIndex->regular_max_price);
             }
 
             // Fallback to base price
-            return (float) core()->convertPrice(floatval($this->price ?? 0));
+            return floatval($this->price ?? 0);
         } catch (\Exception $e) {
             // If any error occurs, return base price
             return floatval($this->price ?? 0);
@@ -2122,7 +2129,7 @@ class Product extends BaseProduct
     {
         $price = $this->getPriceAttribute();
 
-        return $price !== null ? core()->formatPrice($price) : null;
+        return $price !== null ? core()->currency($price) : null;
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]
@@ -2135,7 +2142,7 @@ class Product extends BaseProduct
     {
         $specialPrice = $this->getSpecialPriceAttribute();
 
-        return $specialPrice ? core()->formatPrice($specialPrice) : null;
+        return $specialPrice ? core()->currency($specialPrice) : null;
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]
@@ -2146,7 +2153,7 @@ class Product extends BaseProduct
 
     public function getFormattedMinimumPriceAttribute(): ?string
     {
-        return core()->formatPrice($this->getMinimumPriceAttribute());
+        return core()->currency($this->getMinimumPriceAttribute());
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]
@@ -2157,7 +2164,7 @@ class Product extends BaseProduct
 
     public function getFormattedMaximumPriceAttribute(): ?string
     {
-        return core()->formatPrice($this->getMaximumPriceAttribute());
+        return core()->currency($this->getMaximumPriceAttribute());
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]
@@ -2168,7 +2175,7 @@ class Product extends BaseProduct
 
     public function getFormattedRegularMinimumPriceAttribute(): ?string
     {
-        return core()->formatPrice($this->getRegularMinimumPriceAttribute());
+        return core()->currency($this->getRegularMinimumPriceAttribute());
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]
@@ -2179,7 +2186,7 @@ class Product extends BaseProduct
 
     public function getFormattedRegularMaximumPriceAttribute(): ?string
     {
-        return core()->formatPrice($this->getRegularMaximumPriceAttribute());
+        return core()->currency($this->getRegularMaximumPriceAttribute());
     }
 
     #[ApiProperty(writable: false, readable: true, required: false)]

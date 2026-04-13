@@ -152,11 +152,34 @@ jobs:
           echo "======= CHECK: re-run install with verbose output ======="
           php artisan bagisto-api-platform:install -vvv 2>&1 | tail -60 || true
           echo
-          echo "======= ROUTE LIST: grep for api_platform + shop + graphql ======="
-          php artisan route:list 2>&1 | grep -iE "api.platform|/api/|shop|graphql" | head -60 || true
-          echo
           echo "======= ROUTE LIST: total count ======="
           php artisan route:list 2>&1 | wc -l
+          echo
+          echo "======= ROUTE LIST: all routes containing /api/ ======="
+          php artisan route:list 2>&1 | grep " api" > /tmp/api_routes.txt || true
+          wc -l /tmp/api_routes.txt
+          echo
+          echo "======= ROUTE LIST: routes under /api/shop/ ======="
+          grep "api/shop" /tmp/api_routes.txt || echo "(no /api/shop/* routes)"
+          echo
+          echo "======= ROUTE LIST: routes under /api/admin/ ======="
+          grep "api/admin" /tmp/api_routes.txt | head -20 || echo "(no /api/admin/* routes)"
+          echo
+          echo "======= ROUTE LIST: API Platform routes (_api_ prefix) ======="
+          php artisan route:list 2>&1 | grep "_api_" > /tmp/apiplatform_routes.txt || true
+          wc -l /tmp/apiplatform_routes.txt
+          grep -oE "_api_/[^ ]*" /tmp/apiplatform_routes.txt | sort -u | head -80
+          echo
+          echo "======= PROBE ONE FAILING URL ======="
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/laravel.log 2>&1 &
+          SERVER_PID=$!
+          sleep 3
+          echo "--- GET /api/shop/compare_items ---"
+          curl -isS -H 'Accept: application/json' -H 'X-STOREFRONT-KEY: pk_test_diagnostic' http://127.0.0.1:8000/api/shop/compare_items | head -20 || true
+          echo
+          echo "--- GET /api/compare-items (no prefix, Bagisto's own) ---"
+          curl -isS -H 'Accept: application/json' http://127.0.0.1:8000/api/compare-items | head -20 || true
+          kill $SERVER_PID 2>/dev/null || true
 
       - name: Run Pest (plugin suite)
         working-directory: bagisto

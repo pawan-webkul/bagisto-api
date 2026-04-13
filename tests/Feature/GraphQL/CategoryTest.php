@@ -18,7 +18,7 @@ class CategoryTest extends GraphQLTestCase
     /**
      * Set up the test - seed required category data
      */
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
         

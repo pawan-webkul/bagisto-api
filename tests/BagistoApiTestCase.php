@@ -32,13 +32,13 @@ abstract class BagistoApiTestCase extends BagistoApiTest
         \Webkul\BagistoApi\Http\Middleware\LogApiRequests::class,
     ];
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
     }
 
-    public function tearDown(): void
+    protected function tearDown(): void
     {
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
         parent::tearDown();

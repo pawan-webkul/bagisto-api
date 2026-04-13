@@ -67,7 +67,7 @@ composer require api-platform/graphql:v4.2.3
 php artisan bagisto-api-platform:install
 ```
 
-#### Step 9: Environment Setup (Update in the .env)
+#### Step 6: Environment Setup (Update in the .env)
 ```bash
 STOREFRONT_DEFAULT_RATE_LIMIT=100
 STOREFRONT_CACHE_TTL=60
@@ -81,8 +81,8 @@ Once verified, access the APIs at:
 
 - **REST API (Shop)**: [https://your-domain.com/api/shop/](https://api-demo.bagisto.com/api/shop)
 - **REST API (Admin)**: [https://your-domain.com/api/admin/](https://api-demo.bagisto.com/api/admin)
-- **GraphQL Endpoint**: https://your-domain.com/graphql`
-- **GraphQL Playground**: [https://your-domain.com/graphqli](https://api-demo.bagisto.com/api/graphiql?)
+- **GraphQL Endpoint**: `https://your-domain.com/graphql`
+- **GraphQL Playground**: [https://your-domain.com/graphiql](https://api-demo.bagisto.com/api/graphiql)
 
 ## Documentation
 - Bagisto API: [Demo Page](https://api-demo.bagisto.com/api) 

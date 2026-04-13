@@ -22,7 +22,7 @@ use Webkul\BagistoApi\Exception\ValidationException;
 return [
     'title'       => '',
     'description' => '',
-    'version'     => '1.0.0',
+    'version'     => '1.0.3',
     'show_webby'  => true,
 
     'routes' => [

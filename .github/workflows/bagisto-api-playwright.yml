@@ -51,7 +51,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: '8.3'
           extensions: curl, fileinfo, gd, intl, mbstring, openssl, pdo, pdo_mysql, tokenizer, zip
           tools: composer:v2
 
@@ -72,13 +72,8 @@ jobs:
           sed -i "s|DB_USERNAME=.*|DB_USERNAME=root|" .env
           sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=root|" .env
 
-          # Prompts answered in order:
-          # 1) Admin name     → empty = use default (Example)
-          # 2) Admin email    → empty = use default (admin@example.com)
-          # 3) Admin password → empty = use default (admin123)
-          # 4) Sample products select → true
-          printf "\n\n\ntrue\n" | php artisan bagisto:install --skip-env-check --skip-github-star
-
+          php artisan bagisto:install --skip-env-check --skip-admin-creation 
+         
       # -------------------------------
       # Copy Bagisto API into packages
       # -------------------------------

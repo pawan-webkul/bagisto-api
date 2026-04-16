@@ -43,7 +43,7 @@ jobs:
       - name: Checkout Bagisto API
         uses: actions/checkout@v4
         with:
-          repository: bagisto/bagisto-api
+          repository: pawan-webkul/bagisto-api
           path: bagisto-api
 
       # -------------------------------

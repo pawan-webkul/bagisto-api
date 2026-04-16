@@ -11,7 +11,6 @@
 
 declare(strict_types=1);
 
-use ApiPlatform\HttpCache\SouinPurger;
 use ApiPlatform\Metadata\Operation\DashPathSegmentNameGenerator;
 use ApiPlatform\Metadata\UrlGeneratorInterface;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -23,7 +22,7 @@ use Webkul\BagistoApi\Exception\ValidationException;
 return [
     'title'       => '',
     'description' => '',
-    'version'     => '1.0.3',
+    'version'     => '1.0.0',
     'show_webby'  => true,
 
     'routes' => [
@@ -41,8 +40,8 @@ return [
             'Webkul\BagistoApi\Http\Middleware\HandleInvalidInputException',
             'Webkul\BagistoApi\Http\Middleware\SecurityHeaders',
             'Webkul\BagistoApi\Http\Middleware\LogApiRequests',
-            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
             'Webkul\BagistoApi\Http\Middleware\VerifyStorefrontKey',
+            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
             'Webkul\BagistoApi\Http\Middleware\BagistoApiDocumentationMiddleware',
             'Webkul\BagistoApi\Http\Middleware\ForceApiJson',
             'Spatie\ResponseCache\Middlewares\CacheResponse',
@@ -54,7 +53,7 @@ return [
     ],
 
     'formats' => [
-        'json' => ['application/json'],
+        'json'=> ['application/json'],
     ],
 
     'patch_formats' => [
@@ -107,13 +106,13 @@ return [
         ],
         // GraphQL middleware for authentication and rate limiting
         'middleware' => [
-            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
             'Webkul\BagistoApi\Http\Middleware\VerifyGraphQLStorefrontKey',
+            'Webkul\BagistoApi\Http\Middleware\SetLocaleChannel',
         ],
     ],
 
     'graphiql' => [
-        'enabled' => true,
+        'enabled' => false,
     ],
 
     'name_converter' => SnakeCaseToCamelCaseNameConverter::class,
@@ -216,7 +215,7 @@ return [
             'scoped_clients'    => [],
             'max_header_length' => 7500,
             'request_options'   => [],
-            'purger'            => SouinPurger::class,
+            'purger'            => ApiPlatform\HttpCache\SouinPurger::class,
         ],
     ],
 

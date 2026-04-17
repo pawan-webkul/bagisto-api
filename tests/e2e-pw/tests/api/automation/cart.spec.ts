@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, APIRequestContext } from '@playwright/test';
 import { getGuestCartHeaders } from '../../config/auth';
 import {
   ADD_PRODUCT_TO_CART,
@@ -9,41 +9,49 @@ import {
 } from '../../graphql/Queries/cart.queries';
 import { SHOP_DOCS_QUERIES } from '../../graphql/Queries/shopDocs.queries';
 import { sendGraphQLRequest } from '../../graphql/helpers/graphqlClient';
-import { expectGraphQLSuccess, graphQLErrorMessages, logGraphQLMessages } from '../../graphql/helpers/testSupport';
+import { graphQLErrorMessages } from '../../graphql/helpers/testSupport';
 
-async function getFirstProductId(request: any) {
+async function getFirstProductId(request: APIRequestContext): Promise<number> {
   const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getProducts, { first: 1 });
   const body = await response.json();
   const node = body.data?.products?.edges?.[0]?.node;
   const numericId = Number(String(node?.id ?? '').split('/').pop());
-  return node?._id ?? (Number.isFinite(numericId) && numericId > 0 ? numericId : null);
+
+  expect(numericId > 0, 'test store must have at least one product available').toBeTruthy();
+  return numericId;
+}
+
+async function addProductAndGetItemId(
+  request: APIRequestContext,
+  guestHeaders: Record<string, string>
+): Promise<number> {
+  const productId = await getFirstProductId(request);
+  const response = await sendGraphQLRequest(
+    request,
+    ADD_PRODUCT_TO_CART,
+    { input: { productId, quantity: 1 } },
+    guestHeaders
+  );
+  expect(response.status()).toBe(200);
+
+  const body = await response.json();
+  expect(body.errors, `add-to-cart errored: ${graphQLErrorMessages(body).join(' | ')}`).toBeUndefined();
+
+  const payload = body.data?.createAddProductInCart?.addProductInCart;
+  expect(payload?.success).toBe(true);
+
+  const rawItemId = payload?.items?.edges?.[0]?.node?.id;
+  const itemId = Number(rawItemId);
+  expect(itemId, `unable to read numeric cart item id from: ${rawItemId}`).toBeGreaterThan(0);
+  return itemId;
 }
 
 test.describe('Cart GraphQL API Tests', () => {
+  test.slow();
+
   test('Should create a guest cart token successfully', async ({ request }) => {
     const guestHeaders = await getGuestCartHeaders(request);
-    expect(guestHeaders.Authorization).toContain('Bearer ');
-  });
-
-  test('Should fetch the current cart using the docs-aligned read cart mutation', async ({ request }) => {
-    const guestHeaders = await getGuestCartHeaders(request);
-    const productId = await getFirstProductId(request);
-
-    if (productId) {
-      await sendGraphQLRequest(
-        request,
-        ADD_PRODUCT_TO_CART,
-        { input: { productId, quantity: 1 } },
-        guestHeaders
-      );
-    }
-
-    const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.createReadCart, {}, guestHeaders);
-    expect(response.status()).toBe(200);
-
-    const body = await response.json();
-    logGraphQLMessages('Read cart response', body);
-    expect(body.data?.createReadCart?.readCart || graphQLErrorMessages(body).length > 0).toBeTruthy();
+    expect(guestHeaders.Authorization).toMatch(/^Bearer .+/);
   });
 
   test('Should return a GraphQL validation error for an invalid cart query', async ({ request }) => {
@@ -59,11 +67,10 @@ test.describe('Cart GraphQL API Tests', () => {
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    logGraphQLMessages('Cart invalid query', body);
     expect(graphQLErrorMessages(body).length).toBeGreaterThan(0);
   });
 
-  test('Should try to add a product to cart and show the real API response', async ({ request }) => {
+  test('Should add a product to the cart', async ({ request }) => {
     const guestHeaders = await getGuestCartHeaders(request);
     const productId = await getFirstProductId(request);
 
@@ -76,60 +83,97 @@ test.describe('Cart GraphQL API Tests', () => {
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    console.log(`Add to cart response: ${JSON.stringify(body)}`);
-    expect(body.data?.createAddProductInCart?.addProductInCart || graphQLErrorMessages(body).length > 0).toBeTruthy();
+    expect(body.errors, `add-to-cart errored: ${graphQLErrorMessages(body).join(' | ')}`).toBeUndefined();
+
+    const payload = body.data?.createAddProductInCart?.addProductInCart;
+    expect(payload?.success).toBe(true);
+    expect(payload?.message).toMatch(/added/i);
+    expect(payload?.items?.edges?.[0]?.node?.productId).toBe(productId);
   });
 
-  test('Should try to update a cart item and show the real API response', async ({ request }) => {
+  test('Should fetch the current cart using the docs-aligned read cart mutation', async ({ request }) => {
     const guestHeaders = await getGuestCartHeaders(request);
-    const addResponse = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.createReadCart, {}, guestHeaders);
-    const addBody = await addResponse.json();
-    const itemId = addBody.data?.createReadCart?.readCart?.items?.[0]?.id;
+    await addProductAndGetItemId(request, guestHeaders);
+
+    const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.createReadCart, {}, guestHeaders);
+    expect(response.status()).toBe(200);
+
+    const body = await response.json();
+    expect(body.errors, `read-cart errored: ${graphQLErrorMessages(body).join(' | ')}`).toBeUndefined();
+
+    const readCart = body.data?.createReadCart?.readCart;
+    expect(readCart).toBeTruthy();
+    expect(readCart.itemsCount).toBeGreaterThan(0);
+    expect(readCart.itemsQty).toBeGreaterThan(0);
+    expect(readCart.isGuest).toBe(true);
+  });
+
+  test('Should update the quantity of a cart item', async ({ request }) => {
+    const guestHeaders = await getGuestCartHeaders(request);
+    const cartItemId = await addProductAndGetItemId(request, guestHeaders);
 
     const response = await sendGraphQLRequest(
       request,
       UPDATE_CART_ITEM,
-      { input: { cartItemId: itemId ?? 999999, quantity: 2 } },
+      { input: { cartItemId, quantity: 3 } },
       guestHeaders
     );
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    console.log(`Update cart item response: ${JSON.stringify(body)}`);
-    expect(body.data?.createUpdateCartItem?.updateCartItem || graphQLErrorMessages(body).length > 0).toBeTruthy();
+    expect(body.errors, `update errored: ${graphQLErrorMessages(body).join(' | ')}`).toBeUndefined();
+
+    const payload = body.data?.createUpdateCartItem?.updateCartItem;
+    expect(payload?.success).toBe(true);
+    const updatedItem = payload?.items?.edges?.find((edge: any) => Number(edge?.node?.id) === cartItemId);
+    expect(updatedItem?.node?.quantity).toBe(3);
   });
 
-  test('Should try to remove a cart item and show the real API response', async ({ request }) => {
+  test('Should remove an item from the cart', async ({ request }) => {
     const guestHeaders = await getGuestCartHeaders(request);
-    const readResponse = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.createReadCart, {}, guestHeaders);
-    const readBody = await readResponse.json();
-    const itemId = readBody.data?.createReadCart?.readCart?.items?.[0]?.id;
+    const cartItemId = await addProductAndGetItemId(request, guestHeaders);
 
     const response = await sendGraphQLRequest(
       request,
       REMOVE_CART_ITEM,
-      { input: { cartItemId: itemId ?? 999999 } },
+      { input: { cartItemId } },
       guestHeaders
     );
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    console.log(`Remove cart item response: ${JSON.stringify(body)}`);
-    expect(body.data?.createRemoveCartItem?.removeCartItem || graphQLErrorMessages(body).length > 0).toBeTruthy();
+    expect(body.errors, `remove errored: ${graphQLErrorMessages(body).join(' | ')}`).toBeUndefined();
+
+    const payload = body.data?.createRemoveCartItem?.removeCartItem;
+    expect(payload).toBeTruthy();
+    const stillPresent = payload?.items?.edges?.some((edge: any) => Number(edge?.node?.id) === cartItemId);
+    expect(stillPresent).toBeFalsy();
   });
 
-  test('Should try to apply and remove a coupon and show the real API response', async ({ request }) => {
+  test('Should apply and remove a coupon on the cart', async ({ request }) => {
     const guestHeaders = await getGuestCartHeaders(request);
-    const applyResponse = await sendGraphQLRequest(request, APPLY_COUPON, { couponCode: 'SAVE10' }, guestHeaders);
+    await addProductAndGetItemId(request, guestHeaders);
+
+    const applyResponse = await sendGraphQLRequest(
+      request,
+      APPLY_COUPON,
+      { couponCode: 'SAVE10' },
+      guestHeaders
+    );
     expect(applyResponse.status()).toBe(200);
+
     const applyBody = await applyResponse.json();
-    console.log(`Apply coupon response: ${JSON.stringify(applyBody)}`);
-    expect(applyBody.data?.createApplyCoupon?.applyCoupon || graphQLErrorMessages(applyBody).length > 0).toBeTruthy();
+    expect(applyBody.errors, `apply coupon errored: ${graphQLErrorMessages(applyBody).join(' | ')}`).toBeUndefined();
+    expect(applyBody.data?.createApplyCoupon?.applyCoupon).toBeTruthy();
 
     const removeResponse = await sendGraphQLRequest(request, REMOVE_COUPON, {}, guestHeaders);
     expect(removeResponse.status()).toBe(200);
+
     const removeBody = await removeResponse.json();
-    console.log(`Remove coupon response: ${JSON.stringify(removeBody)}`);
-    expect(removeBody.data?.createRemoveCoupon?.removeCoupon || graphQLErrorMessages(removeBody).length > 0).toBeTruthy();
+    expect(removeBody.errors, `remove coupon errored: ${graphQLErrorMessages(removeBody).join(' | ')}`).toBeUndefined();
+
+    const removePayload = removeBody.data?.createRemoveCoupon?.removeCoupon;
+    expect(removePayload).toBeTruthy();
+    expect(removePayload.couponCode).toBeNull();
   });
 });

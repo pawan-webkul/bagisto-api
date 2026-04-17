@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, APIRequestContext } from '@playwright/test';
 import { getCustomerAuthHeaders } from '../../config/auth';
 import {
   CREATE_COMPARE_ITEM,
@@ -8,51 +8,100 @@ import {
 } from '../../graphql/Queries/compare.queries';
 import { SHOP_DOCS_QUERIES } from '../../graphql/Queries/shopDocs.queries';
 import { sendGraphQLRequest } from '../../graphql/helpers/graphqlClient';
-import { expectAuthAwareResult, graphQLErrorMessages } from '../../graphql/helpers/testSupport';
+import { graphQLErrorMessages } from '../../graphql/helpers/testSupport';
 
-async function getFirstProductId(request: any) {
-  const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getProducts, { first: 1 });
+async function getProductId(request: APIRequestContext, index = 0): Promise<number> {
+  const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getProducts, { first: index + 1 });
   const body = await response.json();
-  const node = body.data?.products?.edges?.[0]?.node;
+  const node = body.data?.products?.edges?.[index]?.node;
   const numericId = Number(String(node?.id ?? '').split('/').pop());
-  return node?._id ?? (Number.isFinite(numericId) && numericId > 0 ? numericId : null);
+  expect(numericId > 0, `test store must expose product at index ${index}`).toBeTruthy();
+  return numericId;
+}
+
+async function createCompareItem(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+  productId: number
+): Promise<number> {
+  const response = await sendGraphQLRequest(
+    request,
+    CREATE_COMPARE_ITEM,
+    { input: { productId, clientMutationId: `compare-create-${productId}` } },
+    headers
+  );
+  expect(response.status()).toBe(200);
+
+  const body = await response.json();
+  expect(
+    body.errors,
+    `create compare item errored: ${graphQLErrorMessages(body).join(' | ')}`
+  ).toBeUndefined();
+
+  const item = body.data?.createCompareItem?.compareItem;
+  expect(item?._id, 'compare item should include numeric _id').toBeGreaterThan(0);
+  return item._id;
 }
 
 test.describe('Compare Items GraphQL API Tests', () => {
-  test('Should get all compare items successfully', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getCompareItems, {}, headers);
+  test.slow();
+
+  test('Should list compare items for an authenticated customer', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+
+    const response = await sendGraphQLRequest(
+      request,
+      SHOP_DOCS_QUERIES.getCompareItems,
+      {},
+      headers
+    );
     expect(response.status()).toBe(200);
+
     const body = await response.json();
-    expectAuthAwareResult(body, 'data.compareItems');
+    expect(
+      body.errors,
+      `list compare items errored: ${graphQLErrorMessages(body).join(' | ')}`
+    ).toBeUndefined();
+    expect(Array.isArray(body.data?.compareItems?.edges)).toBe(true);
   });
 
-  test('Should get compare item by valid ID', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const allResponse = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getCompareItems, {}, headers);
-    const allBody = await allResponse.json();
+  test('Should fetch a compare item by ID after creating one', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+    const productId = await getProductId(request, 0);
+    const compareItemId = await createCompareItem(request, headers, productId);
 
-    if (allBody.data?.compareItems?.edges?.length > 0) {
-      const compareItemId = allBody.data.compareItems.edges[0].node.id;
-      const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getCompareItem, { id: compareItemId }, headers);
-      expect(response.status()).toBe(200);
-      const body = await response.json();
-      expectAuthAwareResult(body, 'data.compareItem');
-    } else {
-      console.log(`No compare items found or auth required: ${graphQLErrorMessages(allBody).join(' | ')}`);
-    }
-  });
-
-  test('Should handle invalid compare item ID gracefully', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getCompareItem, { id: 'invalid-id-99999' }, headers);
+    const response = await sendGraphQLRequest(
+      request,
+      SHOP_DOCS_QUERIES.getCompareItem,
+      { id: compareItemId },
+      headers
+    );
     expect(response.status()).toBe(200);
+
     const body = await response.json();
-    console.log(`Compare invalid ID response: ${graphQLErrorMessages(body).join(' | ')}`);
-    expect(body.data?.compareItem === null || graphQLErrorMessages(body).length > 0).toBeTruthy();
+    expect(
+      body.errors,
+      `get compare item errored: ${graphQLErrorMessages(body).join(' | ')}`
+    ).toBeUndefined();
+    expect(body.data?.compareItem?._id).toBe(compareItemId);
   });
 
-  test('Should handle missing ID parameter gracefully', async ({ request }) => {
+  test('Should return a GraphQL error for invalid compare item ID', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+
+    const response = await sendGraphQLRequest(
+      request,
+      SHOP_DOCS_QUERIES.getCompareItem,
+      { id: 'invalid-id-99999' },
+      headers
+    );
+    expect(response.status()).toBe(200);
+
+    const body = await response.json();
+    expect(graphQLErrorMessages(body).length).toBeGreaterThan(0);
+  });
+
+  test('Should return a GraphQL error when required ID parameter is missing', async ({ request }) => {
     const invalidQuery = `
       query GetCompareItem {
         compareItem {
@@ -60,44 +109,42 @@ test.describe('Compare Items GraphQL API Tests', () => {
         }
       }
     `;
-    
+
     const response = await sendGraphQLRequest(request, invalidQuery);
-    
     expect(response.status()).toBe(200);
-    
+
     const body = await response.json();
-    
-    // Should have errors for missing required parameter
-    expect(body.errors !== undefined).toBeTruthy();
+    expect(graphQLErrorMessages(body).length).toBeGreaterThan(0);
   });
 
-  test('Should cover compare items paginated docs query', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const response = await sendGraphQLRequest(request, GET_COMPARE_ITEMS_PAGINATED, { first: 2, after: null }, headers);
-    expect(response.status()).toBe(200);
-    const body = await response.json();
-    expectAuthAwareResult(body, 'data.compareItems');
-  });
+  test('Should paginate compare items via the docs-aligned query', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
 
-  test('Should try compare item mutations and show the real API response', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const productId = await getFirstProductId(request);
-
-    const createResponse = await sendGraphQLRequest(
+    const response = await sendGraphQLRequest(
       request,
-      CREATE_COMPARE_ITEM,
-      { input: { productId, clientMutationId: 'compare-create-001' } },
+      GET_COMPARE_ITEMS_PAGINATED,
+      { first: 2, after: null },
       headers
     );
-    expect(createResponse.status()).toBe(200);
-    const createBody = await createResponse.json();
-    console.log(`Create compare item response: ${JSON.stringify(createBody)}`);
-    expect(createBody.data?.createCompareItem?.compareItem || graphQLErrorMessages(createBody).length > 0).toBeTruthy();
+    expect(response.status()).toBe(200);
 
-    const compareItemId =
-      createBody.data?.createCompareItem?.compareItem?.id ??
-      createBody.data?.createCompareItem?.compareItem?._id ??
-      'invalid-id-99999';
+    const body = await response.json();
+    expect(
+      body.errors,
+      `paginate compare items errored: ${graphQLErrorMessages(body).join(' | ')}`
+    ).toBeUndefined();
+
+    const connection = body.data?.compareItems;
+    expect(connection).toBeTruthy();
+    expect(Array.isArray(connection.edges)).toBe(true);
+    expect(typeof connection.totalCount).toBe('number');
+  });
+
+  test('Should create, delete one, then delete all compare items', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+    const productId = await getProductId(request, 0);
+
+    const compareItemId = await createCompareItem(request, headers, productId);
 
     const deleteResponse = await sendGraphQLRequest(
       request,
@@ -107,16 +154,22 @@ test.describe('Compare Items GraphQL API Tests', () => {
     );
     expect(deleteResponse.status()).toBe(200);
     const deleteBody = await deleteResponse.json();
-    console.log(`Delete compare item response: ${JSON.stringify(deleteBody)}`);
-    expect(deleteBody.data?.deleteCompareItem?.compareItem || graphQLErrorMessages(deleteBody).length > 0).toBeTruthy();
+    expect(
+      deleteBody.errors,
+      `delete compare item errored: ${graphQLErrorMessages(deleteBody).join(' | ')}`
+    ).toBeUndefined();
+    expect(deleteBody.data?.deleteCompareItem?.clientMutationId).toBe('compare-delete-001');
+
+    const secondProductId = await getProductId(request, 1);
+    await createCompareItem(request, headers, secondProductId);
 
     const deleteAllResponse = await sendGraphQLRequest(request, DELETE_ALL_COMPARE_ITEMS, {}, headers);
     expect(deleteAllResponse.status()).toBe(200);
     const deleteAllBody = await deleteAllResponse.json();
-    console.log(`Delete all compare items response: ${JSON.stringify(deleteAllBody)}`);
     expect(
-      deleteAllBody.data?.createDeleteAllCompareItems?.deleteAllCompareItems ||
-      graphQLErrorMessages(deleteAllBody).length > 0
-    ).toBeTruthy();
+      deleteAllBody.errors,
+      `delete all compare items errored: ${graphQLErrorMessages(deleteAllBody).join(' | ')}`
+    ).toBeUndefined();
+    expect(deleteAllBody.data?.createDeleteAllCompareItems?.deleteAllCompareItems).toBeTruthy();
   });
 });

@@ -13,7 +13,7 @@ export default defineConfig({
     ['html'],
   ],
   use: {
-    baseURL: process.env.BAGISTO_URL || 'http://127.0.0.1:8000',
+    baseURL: process.env.BAGISTO_URL,
     trace: 'on-first-retry',
   },
 

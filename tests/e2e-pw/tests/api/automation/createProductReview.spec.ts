@@ -2,62 +2,79 @@
 import { test, expect } from '@playwright/test';
 import { getCustomerAuthHeaders } from '../../config/auth';
 import { CREATE_PRODUCT_REVIEW } from '../../graphql/Queries/productReviews.queries';
+import { SHOP_DOCS_QUERIES } from '../../graphql/Queries/shopDocs.queries';
 import { sendGraphQLRequest } from '../../graphql/helpers/graphqlClient';
 import { graphQLErrorMessages } from '../../graphql/helpers/testSupport';
 
+async function getFirstProductId(request: any): Promise<number> {
+  const response = await sendGraphQLRequest(request, SHOP_DOCS_QUERIES.getProducts, { first: 1 });
+  const body = await response.json();
+  const node = body.data?.products?.edges?.[0]?.node;
+  const numericId = Number(String(node?.id ?? '').split('/').pop());
+  expect(numericId > 0, 'test store must have at least one product available').toBeTruthy();
+  return numericId;
+}
+
 test.describe('Create Product Review - Basic', () => {
-  const validProductReviewInput = {
-    productId: 1,
-    title: "Excellent quality and very stylish",
-    comment: "Very impressed with the product. The fabric feels premium and soft, the fitting is perfect, and the design adds a classy look. Suitable for office wear as well as casual outings. Lightweight yet warm. Highly recommended.",
-    rating: 5,
-    name: "John Doe",
-    email: "john.doe@example.com",
-    status: 0
-  };
+  test.slow();
 
-  test('Should create a product review or return the actual auth/message from the API', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const response = await sendGraphQLRequest(request, CREATE_PRODUCT_REVIEW, {
-      input: validProductReviewInput
-    }, headers);
+  test('Should create a product review as an authenticated customer', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+    const productId = await getFirstProductId(request);
 
-    const body = await response.json();
-    const messages = graphQLErrorMessages(body);
-    console.log('Create review response:', JSON.stringify(body, null, 2));
-
-    if (body.data?.createProductReview?.productReview) {
-      expect(body.data.createProductReview.productReview.title).toBe(validProductReviewInput.title);
-      return;
-    }
-
-    expect(messages.length).toBeGreaterThan(0);
-  });
-
-  test('Should reject incomplete review payloads with a real validation/auth message', async ({ request }) => {
-    const headers = (await getCustomerAuthHeaders(request)) ?? {};
-    const minimalInput = {
-      productId: 1,
-      title: "Good product",
-      comment: "I liked this product.",
-      rating: 4,
-      name: "Jane Smith",
-      email: "jane.smith@example.com"
+    const input = {
+      productId,
+      title: 'Excellent quality and very stylish',
+      comment:
+        'Very impressed with the product. The fabric feels premium and soft, the fitting is perfect, and the design adds a classy look.',
+      rating: 5,
+      name: 'Playwright Reviewer',
+      email: 'playwright.reviewer@playwrighttest.local',
+      status: 0,
     };
 
-    const response = await sendGraphQLRequest(request, CREATE_PRODUCT_REVIEW, {
-      input: minimalInput
-    }, headers);
+    const response = await sendGraphQLRequest(request, CREATE_PRODUCT_REVIEW, { input }, headers);
+    expect(response.status()).toBe(200);
 
     const body = await response.json();
-    const messages = graphQLErrorMessages(body);
-    console.log(`Create review message: ${messages.join(' | ')}`);
+    expect(
+      body.errors,
+      `create review errored: ${graphQLErrorMessages(body).join(' | ')}`
+    ).toBeUndefined();
 
-    if (body.data?.createProductReview?.productReview) {
-      expect(body.data.createProductReview.productReview.title).toBe(minimalInput.title);
-      return;
-    }
+    const review = body.data?.createProductReview?.productReview;
+    expect(review).toBeTruthy();
+    expect(review.title).toBe(input.title);
+    expect(review.comment).toBe(input.comment);
+    expect(review.rating).toBe(input.rating);
+  });
 
-    expect(messages.length).toBeGreaterThan(0);
+  test('Should create a minimal product review as an authenticated customer', async ({ request }) => {
+    const headers = await getCustomerAuthHeaders(request);
+    const productId = await getFirstProductId(request);
+
+    const input = {
+      productId,
+      title: 'Good product',
+      comment: 'I liked this product. Quality is good for the price.',
+      rating: 4,
+      name: 'Playwright Reviewer Minimal',
+      email: 'playwright.reviewer.min@playwrighttest.local',
+      status: 0,
+    };
+
+    const response = await sendGraphQLRequest(request, CREATE_PRODUCT_REVIEW, { input }, headers);
+    expect(response.status()).toBe(200);
+
+    const body = await response.json();
+    expect(
+      body.errors,
+      `create review errored: ${graphQLErrorMessages(body).join(' | ')}`
+    ).toBeUndefined();
+
+    const review = body.data?.createProductReview?.productReview;
+    expect(review).toBeTruthy();
+    expect(review.title).toBe(input.title);
+    expect(review.rating).toBe(input.rating);
   });
 });
